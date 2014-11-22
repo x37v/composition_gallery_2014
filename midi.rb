@@ -4,9 +4,11 @@ require "unimidi"
 #input = UniMIDI::Input.gets
 name = 'Faderfox DJ3'
 
-input = UniMIDI::Input.select { |m| m.name == name }.first.open
+class XNORMIDI
+  def initialize
+    @funcs = Hash.new
+  end
 
-module XNORMIDI
   SYSEX_BEGIN = 0xF0
   SYSEX_END = 0xF7
 
@@ -34,26 +36,26 @@ module XNORMIDI
   SONGSELECT = 0xF3
   TUNEREQUEST = 0xF6
 
-  def is_status?(byte)
+  def XNORMIDI.is_status?(byte)
     byte & STATUSMASK == STATUSMASK
   end
 
-  def is_realtime?(byte)
+  def XNORMIDI.is_realtime?(byte)
     byte >= CLOCK
   end
 
-  def channel(status)
+  def XNORMIDI.channel(status)
     status & CHANMASK
   end
 
-  def packet_type(status)
+  def XNORMIDI.packet_type(status)
     if (status & 0xF0) == 0xF0
       return status
     end
     return status & 0xF0
   end
 
-  def packet_length(status) 
+  def XNORMIDI.packet_length(status) 
     case (status & 0xF0)
     when CC, NOTEON, NOTEOFF, AFTERTOUCH, PITCHBEND
       return 3
@@ -74,43 +76,48 @@ module XNORMIDI
     end
     return nil
   end
-end
 
-include XNORMIDI
-
-loop do
-  @funcs = Hash.new
-  @funcs[CC] = lambda do |arr|
-    puts "cc chan: #{channel(arr[0])} num: #{arr[1]} val: #{arr[2]}"
-  end
-  @funcs[NOTEON] = lambda do |arr|
-    puts "note on chan: #{channel(arr[0])} num: #{arr[1]} vel: #{arr[2]}"
-  end
-  @funcs[NOTEOFF] = lambda do |arr|
-    puts "note off chan: #{channel(arr[0])} num: #{arr[1]} vel: #{arr[2]}"
-  end
-
-  #puts(m)
-  cur_cntdown = 0
-  current = []
-  input.gets.each do |m|
-    m[:data].each do |d|
-      if is_realtime?(d)
+  def process(array)
+    array.each do |d|
+      if XNORMIDI::is_realtime?(d)
         f = @funcs[d]
         f.call(d) if f
-      elsif is_status?(d)
-        cur_cntdown = packet_length(d) - 1
-        current = [d]
-      elsif current
-        current << d
-        cur_cntdown = cur_cntdown - 1
-        if cur_cntdown <= 0 and current
-          f = @funcs[packet_type(current.first)]
-          f.call(current) if f
-          current = nil
+      elsif XNORMIDI::is_status?(d)
+        @cur_cntdown = XNORMIDI::packet_length(d) - 1
+        @current = [d]
+      elsif @current and @cur_cntdown
+        @current << d
+        @cur_cntdown = @cur_cntdown - 1
+        if @cur_cntdown <= 0
+          f = @funcs[XNORMIDI::packet_type(@current.first)]
+          f.call(@current) if f
+          @current = nil
         end
       end
     end
+  end
+  
+  def register(midi_type, &block)
+    @funcs[midi_type] = block
+  end
+end
+
+input = UniMIDI::Input.select { |m| m.name == name }.first.open
+xmidi = XNORMIDI.new
+
+xmidi.register(XNORMIDI::CC) do |arr|
+  puts "cc chan: #{XNORMIDI::channel(arr[0])} num: #{arr[1]} val: #{arr[2]}"
+end
+xmidi.register(XNORMIDI::NOTEON) do |arr|
+  puts "note on chan: #{XNORMIDI::channel(arr[0])} num: #{arr[1]} vel: #{arr[2]}"
+end
+xmidi.register(XNORMIDI::NOTEOFF)do |arr|
+  puts "note off chan: #{XNORMIDI::channel(arr[0])} num: #{arr[1]} vel: #{arr[2]}"
+end
+
+loop do
+  input.gets.each do |m|
+    xmidi.process(m[:data])
   end
 end
 

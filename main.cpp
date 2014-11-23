@@ -55,6 +55,10 @@ int main(int argc, char * argv[]) {
   clk::time_point next_osc = clk::now();
   clk::time_point last_update = clk::now();
 
+  osc_server::with_float("/formant_time", [&] (float f) {
+    osc::send("/formanttime", f * 100.0);
+  });
+
   osc_server::with_float("/formant_period", [&] (float f) {
     formant_period = milliseconds_type(1 + static_cast<int>(f * 500.0));
   });
@@ -70,6 +74,10 @@ int main(int argc, char * argv[]) {
 
   osc_server::with_float("/noise_volume", [&] (float f) {
     osc::send("/nvca", f);
+  });
+
+  osc_server::with_float("/tone_volume", [&] (float f) {
+    osc::send("/tvca", f);
   });
 
   unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();

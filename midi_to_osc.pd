@@ -18,7 +18,7 @@
 #X msg 174 684 sendtyped /formant_rand_range f \$1;
 #X msg 162 664 sendtyped /formant_center f \$1;
 #X msg 623 339 sendtyped /tone_volume f \$1;
-#X obj 623 407 s osc;
+#X obj 623 455 s osc;
 #X msg 154 636 sendtyped /formant_time f \$1;
 #X obj 110 534 route 120 112 1 2 3;
 #X obj 622 284 r fmidi;
@@ -35,7 +35,9 @@
 #X msg 361 345 sendtyped /noise_pan i \$1;
 #X msg 378 370 sendtyped /tone_pan i \$1;
 #X msg 671 361 sendtyped /tone_pan_spread f \$1;
-#X obj 623 311 route 113 5;
+#X msg 682 387 sendtyped /tone_freq_spread f \$1;
+#X msg 692 418 sendtyped /tone_volume_spread f \$1;
+#X obj 623 311 route 113 5 6 7;
 #X connect 1 0 3 0;
 #X connect 2 0 1 0;
 #X connect 4 0 1 0;
@@ -58,7 +60,7 @@
 #X connect 19 2 18 0;
 #X connect 19 3 15 0;
 #X connect 19 4 14 0;
-#X connect 20 0 34 0;
+#X connect 20 0 36 0;
 #X connect 22 0 19 0;
 #X connect 23 0 24 0;
 #X connect 24 0 26 0;
@@ -71,5 +73,9 @@
 #X connect 31 0 30 0;
 #X connect 32 0 30 0;
 #X connect 33 0 17 0;
-#X connect 34 0 16 0;
-#X connect 34 1 33 0;
+#X connect 34 0 17 0;
+#X connect 35 0 17 0;
+#X connect 36 0 16 0;
+#X connect 36 1 33 0;
+#X connect 36 2 34 0;
+#X connect 36 3 35 0;

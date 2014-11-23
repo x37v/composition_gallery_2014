@@ -25,7 +25,8 @@ float tone_pan = 0.5f;
 
 float noise_pan_incr = 0.0f;
 float tone_pan_incr = 0.0f;
-float tone_spread = 1.0f;
+float tone_pan_spread = 1.0f;
+float tone_freq_spread = 0.0f;
 
 const float pan_mult = 0.05f;
 
@@ -52,6 +53,25 @@ namespace osc {
   }
 }
 
+float frand() {
+  return static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+}
+
+void set_volumes(float master) {
+  for (int i = 1; i < 6; i++) {
+    int index = i + 1;
+    float start = static_cast<float>(i) / 12.0f;
+    float v = master - start;
+    if (start > 0) {
+      v /= start;
+    } else {
+      v *= 2.0;
+    }
+    v = std::min(1.0f, std::max(0.0f, v));
+    osc::send("/vca" + std::to_string(index), v);
+  }
+}
+
 int main(int argc, char * argv[]) {
   osc_server::start(10001);
 
@@ -59,6 +79,38 @@ int main(int argc, char * argv[]) {
   osc::send("/nvca", 0.0);
   osc::send("/tvca", 0.0);
   osc::send("/bvca", 0.0);
+
+  osc::send("/vca1", 1.0);
+
+  osc::send("/t1", 64);
+
+  /*
+  std::vector<float> tone_offset = {
+    0.0,
+    0.840188,
+    0.394383,
+    0.783099,
+    0.79844,
+    0.911647
+  };
+  */
+
+  std::vector<float> tone_offset = {
+    0.0,
+    1.0 / 2.0,
+    1.0 / 3.0,
+    1.0 / 5.0,
+    1.0 / 7.0,
+    1.0 / 11.0,
+  };
+
+  auto set_freqs = [&]{
+    for (int i = 1; i < 6; i++) {
+      float v = 0.05 * frand() + tone_offset[i] * tone_freq_spread;
+      osc::send("/t" + std::to_string(i + 1), v);
+    }
+  };
+  set_freqs();
 
   //osc::send("/nvca", 0.5);
   osc::send("/npan", tone_pan);
@@ -89,7 +141,16 @@ int main(int argc, char * argv[]) {
   });
 
   osc_server::with_float("/tone_pan_spread", [&] (float f) {
-      tone_spread = f;
+      tone_pan_spread = f;
+  });
+
+  osc_server::with_float("/tone_freq_spread", [&] (float f) {
+      tone_freq_spread = f * 24;
+      set_freqs();
+  });
+
+  osc_server::with_float("/tone_volume_spread", [&] (float f) {
+      set_volumes(f);
   });
 
   osc_server::with_int("/tone_pan", [&] (int v) {
@@ -135,7 +196,7 @@ int main(int argc, char * argv[]) {
     if (next_pan < n) {
       next_pan = n + pan_period;
 
-      if (tone_pan_incr) {
+      if (true) {
         tone_pan += tone_pan_incr;
         while (tone_pan < 0)
           tone_pan += 1;
@@ -143,7 +204,7 @@ int main(int argc, char * argv[]) {
           tone_pan -= 1;
         for (int i = 0; i < 6; i++) {
           float p = tone_pan * 360;
-          float off = static_cast<float>(i) * tone_spread * 60.0;
+          float off = static_cast<float>(i) * tone_pan_spread * 60.0;
           p += off;
           while (p > 360)
             p -= 360;

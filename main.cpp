@@ -11,12 +11,23 @@ using std::endl;
 
 typedef std::chrono::steady_clock clk;
 typedef std::chrono::duration<int,std::milli> milliseconds_type;
-typedef std::uniform_int_distribution<int> uni_int_distro;
+typedef std::uniform_real_distribution<double> uni_real_distro;
 
-int formant_center = 0;
+float formant_center = 0.0f;
+float formant_range = 0.0f;
 clk::duration formant_period = milliseconds_type(1000);
 clk::duration osc_period = milliseconds_type(10);
-uni_int_distro formant_rand;
+clk::duration pan_period = milliseconds_type(80);
+uni_real_distro formant_rand;
+
+float noise_pan = 0.5f;
+float tone_pan = 0.5f;
+
+float noise_pan_incr = 0.0f;
+float tone_pan_incr = 0.0f;
+float tone_spread = 1.0f;
+
+const float pan_mult = 0.05f;
 
 const std::vector<std::string> vaddr = { "/vowel_ee", "/vowel_ih", "/vowel_eh", "/vowel_ae", "/vowel_a", "/vowel_oo", "/vowel_uh", "/vowel_o", "/vowel_ah"};
 
@@ -50,10 +61,8 @@ int main(int argc, char * argv[]) {
   osc::send("/bvca", 0.0);
 
   //osc::send("/nvca", 0.5);
-  osc::send("/npan", 0.5);
+  osc::send("/npan", tone_pan);
 
-  clk::time_point next_osc = clk::now();
-  clk::time_point last_update = clk::now();
 
   osc_server::with_float("/formant_time", [&] (float f) {
     osc::send("/formanttime", f * 100.0);
@@ -68,8 +77,7 @@ int main(int argc, char * argv[]) {
   });
 
   osc_server::with_float("/formant_rand_range", [&] (float f) {
-      int top = static_cast<int>(static_cast<float>(vaddr.size()) * f) - 1;
-      formant_rand = uni_int_distro(0, top >= 0 ? top : 0);
+      formant_range = static_cast<float>(vaddr.size()) * f;
   });
 
   osc_server::with_float("/noise_volume", [&] (float f) {
@@ -80,21 +88,79 @@ int main(int argc, char * argv[]) {
     osc::send("/tvca", f);
   });
 
+  osc_server::with_float("/tone_pan_spread", [&] (float f) {
+      tone_spread = f;
+  });
+
+  osc_server::with_int("/tone_pan", [&] (int v) {
+      if (v > 60 && v < 66)
+        tone_pan_incr = 0.0f;
+      else
+        tone_pan_incr = pan_mult * (static_cast<float>(v - 64) / 64.0);
+  });
+
+  osc_server::with_int("/noise_pan", [&] (int v) {
+      if (v > 60 && v < 66)
+        noise_pan_incr = 0;
+      else
+        noise_pan_incr = pan_mult * (static_cast<float>(v - 64) / 64.0);
+  });
+
   unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
   std::default_random_engine generator(seed);
-  formant_rand = uni_int_distro(0, 0);
+  formant_rand = uni_real_distro(0, 1.0);
+
+  int index_last = -1;
+
+  clk::time_point next_osc = clk::now();
+  clk::time_point next_pan = clk::now();
+  clk::time_point last_formant = clk::now();
 
   while (1) {
     clk::time_point n = clk::now();
-    if (last_update + formant_period < n) {
-      int index = (formant_center + formant_rand(generator)) % vaddr.size();
-      osc::send(vaddr[index]);
-      last_update = n;
+    if (last_formant + formant_period < n) {
+      int index = static_cast<int>(round(formant_center + formant_rand(generator) * formant_range)) % vaddr.size();
+      if (index != index_last)
+        osc::send(vaddr[index]);
+      index_last = index;
+      last_formant = n;
     }
+
     if (next_osc < n) {
       osc_server::process();
       //next_osc += osc_period;
       next_osc = n + osc_period;
+    }
+
+    if (next_pan < n) {
+      next_pan = n + pan_period;
+
+      if (tone_pan_incr) {
+        tone_pan += tone_pan_incr;
+        while (tone_pan < 0)
+          tone_pan += 1;
+        while (tone_pan > 1)
+          tone_pan -= 1;
+        for (int i = 0; i < 6; i++) {
+          float p = tone_pan * 360;
+          float off = static_cast<float>(i) * tone_spread * 60.0;
+          p += off;
+          while (p > 360)
+            p -= 360;
+          while (p < 0)
+            p += 360;
+          osc::send("/pan" + std::to_string(i + 1), p);
+        }
+      }
+
+      if (noise_pan_incr) {
+        noise_pan += noise_pan_incr;
+        while (noise_pan < 0)
+          noise_pan += 1;
+        while (noise_pan > 1)
+          noise_pan -= 1;
+        osc::send("/npan", noise_pan * 360);
+      }
     }
   }
 

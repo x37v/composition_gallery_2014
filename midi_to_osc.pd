@@ -38,6 +38,8 @@
 #X msg 682 387 sendtyped /tone_freq_spread f \$1;
 #X msg 692 418 sendtyped /tone_volume_spread f \$1;
 #X obj 623 311 route 113 5 6 7;
+#X obj 451 94 notein;
+#X obj 451 123 pack f f f;
 #X connect 1 0 3 0;
 #X connect 2 0 1 0;
 #X connect 4 0 1 0;
@@ -79,3 +81,6 @@
 #X connect 36 1 33 0;
 #X connect 36 2 34 0;
 #X connect 36 3 35 0;
+#X connect 37 0 38 0;
+#X connect 37 1 38 1;
+#X connect 37 2 38 2;

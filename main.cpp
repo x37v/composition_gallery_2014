@@ -11,7 +11,8 @@ using std::endl;
 
 enum {
   TONE = 0,
-  NOISE = 1
+  NOISE = 1,
+  BASS = 2
 };
 
 enum preformance_mode_t {
@@ -28,7 +29,7 @@ typedef std::uniform_real_distribution<double> uni_real_distro;
 float formant_center = 0.0f;
 float formant_range = 0.0f;
 
-float volume[2] = {0.0f, 0.0f};
+float volume[3] = {0.0f, 0.0f, 0.1};
 
 clk::duration formant_period = milliseconds_type(1000);
 clk::duration osc_period = milliseconds_type(10);
@@ -105,8 +106,12 @@ void note(int& index, clk::time_point& next_note) {
   int m = index % 2;
   if (m == 0) {
     osc::send("/tvca", volume[TONE]);
+    osc::send("/nvca", volume[NOISE]);
+    osc::send("/bvca", volume[BASS]);
   } else if (m == 1) {
     osc::send("/tvca", 0.0);
+    osc::send("/nvca", 0.0);
+    osc::send("/bvca", 0.0);
   } else {
     //index = 0;
     //return;
@@ -128,6 +133,7 @@ int main(int argc, char * argv[]) {
   osc::send("/vca" + std::to_string(map_vca(0)), 1.0);
 
   osc::send("/t1", 64);
+  osc::send("/bfreq", 92);
 
   /*
   std::vector<float> tone_offset = {
@@ -247,8 +253,10 @@ int main(int argc, char * argv[]) {
       next_osc = n + osc_period;
     }
 
-    if (next_note < n)
-      note(note_index, next_note);
+    if (next_note < n) {
+      if (performance_mode == NOTES)
+        note(note_index, next_note);
+    }
 
     if (next_pan < n) {
       next_pan = n + pan_period;

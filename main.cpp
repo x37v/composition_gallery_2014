@@ -9,15 +9,31 @@
 using std::cout;
 using std::endl;
 
+enum {
+  TONE = 0,
+  NOISE = 1
+};
+
+enum preformance_mode_t {
+  FREE,
+  NOTES
+};
+
+preformance_mode_t performance_mode = NOTES;
+
 typedef std::chrono::steady_clock clk;
 typedef std::chrono::duration<int,std::milli> milliseconds_type;
 typedef std::uniform_real_distribution<double> uni_real_distro;
 
 float formant_center = 0.0f;
 float formant_range = 0.0f;
+
+float volume[2] = {0.0f, 0.0f};
+
 clk::duration formant_period = milliseconds_type(1000);
 clk::duration osc_period = milliseconds_type(10);
 clk::duration pan_period = milliseconds_type(80);
+
 uni_real_distro formant_rand;
 
 float noise_pan = 0.5f;
@@ -57,9 +73,21 @@ float frand() {
   return static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
 }
 
+int map_vca(int osc) {
+  switch (osc) {
+    case 0:
+      return 3;
+    case 1:
+      return 1;
+    case 2:
+      return 2;
+    default:
+      return osc + 1;
+  }
+}
+
 void set_volumes(float master) {
   for (int i = 1; i < 6; i++) {
-    int index = i + 1;
     float start = static_cast<float>(i) / 12.0f;
     float v = master - start;
     if (start > 0) {
@@ -68,8 +96,22 @@ void set_volumes(float master) {
       v *= 2.0;
     }
     v = std::min(1.0f, std::max(0.0f, v));
-    osc::send("/vca" + std::to_string(index), v);
+    osc::send("/vca" + std::to_string(map_vca(i)), v);
   }
+}
+
+void note(int& index, clk::time_point& next_note) {
+  next_note = clk::now() + milliseconds_type(static_cast<int>(200.0 * frand()));
+  int m = index % 2;
+  if (m == 0) {
+    osc::send("/tvca", volume[TONE]);
+  } else if (m == 1) {
+    osc::send("/tvca", 0.0);
+  } else {
+    //index = 0;
+    //return;
+  }
+  index++;
 }
 
 int main(int argc, char * argv[]) {
@@ -83,7 +125,7 @@ int main(int argc, char * argv[]) {
   osc::send("/thpf", 0.0);
   osc::send("/tlpf", 127.0);
 
-  osc::send("/vca1", 1.0);
+  osc::send("/vca" + std::to_string(map_vca(0)), 1.0);
 
   osc::send("/t1", 64);
 
@@ -138,11 +180,15 @@ int main(int argc, char * argv[]) {
   });
 
   osc_server::with_float("/noise_volume", [&] (float f) {
-    osc::send("/nvca", f);
+      volume[NOISE] = f;
+      if (performance_mode == FREE)
+        osc::send("/nvca", f);
   });
 
   osc_server::with_float("/tone_volume", [&] (float f) {
-    osc::send("/tvca", f);
+      volume[TONE] = f;
+      if (performance_mode == FREE)
+        osc::send("/tvca", f);
   });
 
   osc_server::with_float("/tone_pan_spread", [&] (float f) {
@@ -180,7 +226,10 @@ int main(int argc, char * argv[]) {
 
   clk::time_point next_osc = clk::now();
   clk::time_point next_pan = clk::now();
+  clk::time_point next_note = clk::now();
   clk::time_point last_formant = clk::now();
+
+  int note_index = 0;
 
   while (1) {
     clk::time_point n = clk::now();
@@ -197,6 +246,9 @@ int main(int argc, char * argv[]) {
       //next_osc += osc_period;
       next_osc = n + osc_period;
     }
+
+    if (next_note < n)
+      note(note_index, next_note);
 
     if (next_pan < n) {
       next_pan = n + pan_period;

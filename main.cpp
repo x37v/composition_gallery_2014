@@ -51,7 +51,8 @@ clk::duration osc_period = milliseconds_type(10);
 clk::duration led_period = milliseconds_type(40);
 clk::duration pan_period = milliseconds_type(80);
 
-uni_real_distro formant_rand;
+std::default_random_engine generator(std::chrono::system_clock::now().time_since_epoch().count());
+uni_real_distro real_rand = uni_real_distro(0, 1.0);
 
 float noise_pan = 0.5f;
 float tone_pan = 0.5f;
@@ -267,10 +268,6 @@ int main(int argc, char * argv[]) {
         noise_pan_incr = pan_mult * (static_cast<float>(v - 64) / 64.0);
   });
 
-  unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-  std::default_random_engine generator(seed);
-  formant_rand = uni_real_distro(0, 1.0);
-
   int index_last = -1;
 
   clk::time_point next_osc = clk::now();
@@ -284,7 +281,7 @@ int main(int argc, char * argv[]) {
   while (1) {
     clk::time_point n = clk::now();
     if (last_formant + formant_period < n) {
-      int index = static_cast<int>(round(formant_center + formant_rand(generator) * formant_range)) % vaddr.size();
+      int index = static_cast<int>(round(formant_center + frand() * formant_range)) % vaddr.size();
       if (index != index_last)
         osc::send(vaddr[index]);
       index_last = index;

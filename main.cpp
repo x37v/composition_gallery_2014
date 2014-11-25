@@ -7,6 +7,7 @@
 #include <random>
 #include <unistd.h>
 #include "osc_server.h"
+#include "envelope.h"
 
 #define NUM_LEDS 6
 
@@ -23,6 +24,7 @@ enum preformance_mode_t {
   FREE,
   NOTES
 };
+
 
 //primes
 std::vector<float> tone_offset = {

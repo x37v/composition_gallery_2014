@@ -5,6 +5,7 @@
 #include <mutex>
 #include <chrono>
 #include <random>
+#include <unistd.h>
 #include "osc_server.h"
 
 #define NUM_LEDS 6
@@ -35,7 +36,18 @@ std::vector<float> tone_offset = {
   1.0 / 17.0,
 };
 
-preformance_mode_t performance_mode = NOTES;
+/*
+   std::vector<float> tone_offset = {
+   0.0,
+   0.840188,
+   0.394383,
+   0.783099,
+   0.79844,
+   0.911647
+   };
+*/
+
+preformance_mode_t performance_mode = FREE;
 
 typedef std::chrono::steady_clock clk;
 typedef std::chrono::duration<int,std::milli> milliseconds_type;
@@ -88,7 +100,7 @@ namespace osc {
 
   void send_led(int index, float h, float s, float l) {
     std::lock_guard<std::mutex> lock(osc_mutex);
-    l = std::min(1.0f, std::max(0.0f, static_cast<float>(std::sin(l * M_PI / 2.0))));
+    //l = std::min(1.0f, std::max(0.0f, static_cast<float>(std::sin(l * M_PI / 2.0))));
     lo_send(osc_address, ("/led" + std::to_string(index + 1)).c_str(), "fff", h, s, l);
   }
 }
@@ -128,8 +140,10 @@ bool was_note = false;
 
 std::vector<std::vector<float>> leds;
 int led_offset = 0;
+float color = 0;
 
 void draw_leds() {
+#if 1
   if (was_note) {
     led_offset = frand() * static_cast<float>(NUM_LEDS);
     for (int i = 0; i < NUM_LEDS; i++) {
@@ -146,16 +160,51 @@ void draw_leds() {
     osc::send_led(i, leds[i][0], leds[i][1], leds[i][2]);
     leds[i][2] = std::max(0.0f, leds[i][2] - 0.047f);
   }
+#else
+
+  if (was_note && leds[0][2] == 0.0f && leds[3][2] == 0.0f) {
+    led_offset = 0;
+    color = frand();
+    for (int i = 0; i < NUM_LEDS / 2; i++) {
+      leds[i][0] = -color;
+      leds[i][1] = 1.0;
+      leds[i][2] = 0.0f;
+    }
+  } else {
+    led_offset++;
+  }
+
+  if (led_offset == 16) {
+    for (int i = 3; i < NUM_LEDS; i++) {
+      leds[i][0] = -color;
+      leds[i][1] = 1.0;
+      leds[i][2] = 0.0;
+    }
+  }
+
+  for (int i = 0; i < NUM_LEDS; i++) {
+    osc::send_led(i, fabs(leds[i][0]), leds[i][1], leds[i][2]);
+    float incr = (leds[i][0] < 0) ? 0.047f : -0.047f;
+    leds[i][2] = leds[i][2] + incr;
+    if (leds[i][0] < 0.0) {
+      if (leds[i][2] >= 1) {
+        leds[i][2] = 1;
+        leds[i][0] = -leds[i][0];
+      }
+    } 
+    leds[i][2] = std::min(1.0f, std::max(0.0f, leds[i][2]));
+  }
+#endif
   was_note = false;
 }
 
 void note(int& index, clk::time_point& next_note) {
-  next_note = clk::now() + milliseconds_type(static_cast<int>(200.0 * frand()));
+  next_note = clk::now() + milliseconds_type(static_cast<int>(800.0 * frand()));
   int m = index % 2;
   if (m == 0) {
     osc::send("/tvca", volume[TONE]);
     osc::send("/nvca", volume[NOISE]);
-    osc::send("/bvca", volume[BASS]);
+    //osc::send("/bvca", volume[BASS]);
     was_note = true;
   } else if (m == 1) {
     osc::send("/tvca", 0.0);
@@ -168,39 +217,31 @@ void note(int& index, clk::time_point& next_note) {
   index++;
 }
 
+//white = saturation 0, value = 1, hue = 1
+
 int main(int argc, char * argv[]) {
   osc_server::start(10001);
+  osc::setup("192.168.0.100", "9001"); //main patch
+  //osc::setup("", "1888"); //jason's mockup, with route through
 
-  //osc::setup("", "9001"); //main patch
-  osc::setup("", "1888"); //jason's mockup, with route through
+  osc::send("/remote");
 
-  osc::send("/nvca", 0.0);
-  osc::send("/tvca", 0.0);
-  osc::send("/bvca", 0.0);
+  osc::send("/nvca", 0.0f);
+  osc::send("/tvca", 0.0f);
+  osc::send("/bvca", 0.0f);
 
   osc::send("/thpf", 0.0);
   osc::send("/tlpf", 127.0);
 
   osc::send("/vca" + std::to_string(map_vca(0)), 0.0);
 
-  osc::send("/t1", 64);
+  osc::send("/t1", 65);
   osc::send("/bfreq", 92);
 
   for (int i = 0; i < NUM_LEDS; i++) {
     leds.push_back({0.0f, 0.0f, 0.0f});
-    osc::send_led(i, 0, 0, 0);
+    osc::send_led(i, 1.0, 0, 1.0);
   }
-
-  /*
-  std::vector<float> tone_offset = {
-    0.0,
-    0.840188,
-    0.394383,
-    0.783099,
-    0.79844,
-    0.911647
-  };
-  */
 
   auto set_freqs = [&]{
     for (int i = 1; i < 6; i++) {

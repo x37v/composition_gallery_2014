@@ -15,7 +15,7 @@ void Envelope::restart() { mIndex = 0.0f; }
 bool Envelope::complete() const { return mIndex >= 1.0f; }
 
 bool Envelope::update() { 
-  mIndex += mIncrement;
+  mIndex = std::min(mIncrement + mIndex, 1.0f);
   return complete();
 }
 
@@ -26,8 +26,17 @@ float Envelope::value() const {
         return mIndex * 2.0f;
       else
         return std::min(0.0f, 2.0f - 2.0f * mIndex);
-    case LINEAR:
-    default:
-      return std::min(1.0f, mIndex);
+    case HALF_SIN:
+      if (mIndex >= 1.0f)
+        return 0.0f;
+      return sin(M_PI * mIndex);
+    case QUARTER_SIN:
+      if (mIndex >= 1.0f)
+        return 1.0f;
+      return sin(0.5 * M_PI * mIndex);
+    case RAMP_UP:
+      return mIndex;
+    case RAMP_DOWN:
+      return 1.0f - mIndex;
   }
 }

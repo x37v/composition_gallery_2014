@@ -8,6 +8,8 @@
 #include <unistd.h>
 #include "osc_server.h"
 #include "envelope.h"
+#include "RtMidi.h"
+#include <memory>
 
 #define NUM_LEDS 6
 
@@ -104,6 +106,68 @@ namespace osc {
     std::lock_guard<std::mutex> lock(osc_mutex);
     //l = std::min(1.0f, std::max(0.0f, static_cast<float>(std::sin(l * M_PI / 2.0))));
     lo_send(osc_address, ("/led" + std::to_string(index + 1)).c_str(), "fff", h, s, l);
+  }
+}
+
+namespace midi {
+  const std::string midi_name = "Bitstream 3X";
+  std::shared_ptr<RtMidiIn> midiin;
+
+#define CC 0xB0
+#define NOTEON 0x90
+#define NOTEOFF 0x80
+
+  void open() {
+    try {
+      midiin = std::make_shared<RtMidiIn>();
+    } catch (RtError &error) {
+      throw std::runtime_error(error.what());
+    }
+
+    // Check inputs.
+    unsigned int nPorts = midiin->getPortCount();
+    for (unsigned int i=0; i<nPorts; i++) {
+      try {
+        std::string name = midiin->getPortName(i);
+        if (name.find(midi_name) != std::string::npos) {
+          midiin->openPort(i);
+          return;
+        }
+      } catch (RtError &error) {
+        throw std::runtime_error(error.what());
+      }
+    }
+    throw std::runtime_error("couldn't connect to midi with port name: " + midi_name);
+  }
+
+  void cc(uint8_t chan, uint8_t num, uint8_t val) {
+    cout << "cc " << (int)num << ": " << (int)val << " chan: " << (int)chan << endl;
+  }
+
+  void note(bool down, uint8_t chan, uint8_t num, uint8_t vel) {
+    cout << "note" << (down ? "on " : "off ") << (int)num << ": " << (int)vel << " chan: " << (int)chan << endl;
+  }
+
+  void process() {
+    std::vector<unsigned char> message;
+    midiin->getMessage(&message);
+    if (message.size() != 3)
+      return;
+    uint8_t status = (message[0] & 0xF0);
+    uint8_t chan = (message[0] & 0x0F);
+    uint8_t num = message[1];
+    uint8_t val = message[2];
+    switch (status) {
+      case CC:
+        cc(chan, num, val);
+        break;
+      case NOTEON:
+        note(true, chan, num, val);
+        break;
+      case NOTEOFF:
+        note(false, chan, num, val);
+        break;
+    }
   }
 }
 
@@ -222,9 +286,10 @@ void note(int& index, clk::time_point& next_note) {
 //white = saturation 0, value = 1, hue = 1
 
 int main(int argc, char * argv[]) {
+  midi::open();
   osc_server::start(10001);
-  osc::setup("192.168.0.100", "9001"); //main patch
-  //osc::setup("", "1888"); //jason's mockup, with route through
+  //osc::setup("192.168.0.100", "9001"); //main patch
+  osc::setup("", "1888"); //jason's mockup, with route through
 
   osc::send("/remote");
 
@@ -322,6 +387,8 @@ int main(int argc, char * argv[]) {
   int note_index = 0;
 
   while (1) {
+    midi::process();
+
     clk::time_point n = clk::now();
     if (last_formant + formant_period < n) {
       int index = static_cast<int>(round(formant_center + frand() * formant_range)) % vaddr.size();

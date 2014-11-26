@@ -47,7 +47,14 @@ std::vector<float> tone_offset = {
   1.0 / 17.0,
 };
 
-std::vector<Envelope> led_envs;
+class Led {
+  public:
+    float hue = 1.0f;
+    float sat = 1.0f;
+    Envelope env = {Envelope::TRIANGLE};
+};
+
+std::vector<Led> leds;
 
 /*
    std::vector<float> tone_offset = {
@@ -150,7 +157,6 @@ void set_volumes(float master) {
 
 bool was_note = false;
 
-std::vector<std::vector<float>> leds;
 int led_offset = 0;
 float color = 0;
 
@@ -168,39 +174,27 @@ void draw_leds() {
       }
     }
   }
-  for (int i = 0; i < NUM_LEDS; i++) {
-    osc::send_led(i, leds[i][0], leds[i][1], leds[i][2]);
-    leds[i][2] = std::max(0.0f, leds[i][2] - 0.047f);
-  }
 #else
-
-  if (was_note && led_envs.front().complete() && led_envs.back().complete()) {
-    led_offset = 0;
+  if (was_note && leds.front().env.complete() && leds.back().env.complete()) {
     color = frand();
     for (int i = 0; i < NUM_LEDS / 2; i++) {
-      leds[i][0] = color;
-      leds[i][1] = 1.0;
-      leds[i][2] = 0.0f;
-      led_envs[i].restart();
+      leds[i].hue = color;
+      leds[i].sat = 1.0;
+      leds[i].env.restart();
     }
-  } else {
-    led_offset++;
-  }
-
-  if (led_offset == 16) {
+  } else if (!leds.front().env.complete() && 
+      leds.front().env.value() > 0.66 && leds.back().env.complete()) { //XXX make value configurable?
     for (int i = 3; i < NUM_LEDS; i++) {
-      leds[i][0] = color;
-      leds[i][1] = 1.0;
-      leds[i][2] = 0.0;
-      led_envs[i].restart();
+      leds[i].hue = leds[0].hue;
+      leds[i].sat = 1.0;
+      leds[i].env.restart();
     }
-  }
-
-  for (int i = 0; i < NUM_LEDS; i++) {
-    osc::send_led(i, leds[i][0], leds[i][1], led_envs[i].value());
-    led_envs[i].update();
   }
 #endif
+  for (int i = 0; i < NUM_LEDS; i++) {
+    osc::send_led(i, leds[i].hue, leds[i].sat, leds[i].env.value());
+    leds[i].env.update();
+  }
   was_note = false;
 }
 
@@ -269,9 +263,8 @@ int main(int argc, char * argv[]) {
   osc::send("/bfreq", 92);
 
   for (int i = 0; i < NUM_LEDS; i++) {
-    led_envs.push_back(Envelope(Envelope::TRIANGLE));
-    leds.push_back({0.0f, 0.0f, 0.0f});
-    osc::send_led(i, 1.0, 0, 1.0);
+    leds.push_back(Led());
+    osc::send_led(i, 0.0, 0.0, 0.0);
   }
 
   set_freqs();

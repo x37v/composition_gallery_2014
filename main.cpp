@@ -63,7 +63,6 @@ float formant_range = 0.0f;
 float volume[3] = {0.0f, 0.0f, 0.1};
 
 clk::duration formant_period = milliseconds_type(1000);
-clk::duration osc_period = milliseconds_type(10);
 clk::duration led_period = milliseconds_type(40);
 clk::duration pan_period = milliseconds_type(80);
 
@@ -106,73 +105,6 @@ namespace osc {
     std::lock_guard<std::mutex> lock(osc_mutex);
     //l = std::min(1.0f, std::max(0.0f, static_cast<float>(std::sin(l * M_PI / 2.0))));
     lo_send(osc_address, ("/led" + std::to_string(index + 1)).c_str(), "fff", h, s, l);
-  }
-}
-
-namespace midi {
-  const std::string midi_name = "Bitstream 3X";
-  std::shared_ptr<RtMidiIn> midiin;
-
-#define CC 0xB0
-#define NOTEON 0x90
-#define NOTEOFF 0x80
-
-  void open() {
-    try {
-      midiin = std::make_shared<RtMidiIn>();
-    } catch (RtError &error) {
-      throw std::runtime_error(error.what());
-    }
-
-    // Check inputs.
-    unsigned int nPorts = midiin->getPortCount();
-    for (unsigned int i=0; i<nPorts; i++) {
-      try {
-        std::string name = midiin->getPortName(i);
-        if (name.find(midi_name) != std::string::npos) {
-          midiin->openPort(i);
-          return;
-        }
-      } catch (RtError &error) {
-        throw std::runtime_error(error.what());
-      }
-    }
-    throw std::runtime_error("couldn't connect to midi with port name: " + midi_name);
-  }
-
-  void cc(uint8_t chan, uint8_t num, uint8_t val) {
-    cout << "cc " << (int)num << ": " << (int)val << " chan: " << (int)chan << endl;
-  }
-
-  void note(bool down, uint8_t chan, uint8_t num, uint8_t vel) {
-    cout << "note" << (down ? "on " : "off ") << (int)num << ": " << (int)vel << " chan: " << (int)chan << endl;
-  }
-
-  void process() {
-    std::vector<unsigned char> message;
-    do {
-      midiin->getMessage(&message);
-      if (message.size() == 0)
-        return;
-
-      if (message.size() == 3) {
-        uint8_t status = (message[0] & 0xF0);
-        uint8_t chan = (message[0] & 0x0F);
-        uint8_t num = message[1];
-        uint8_t val = message[2];
-        switch (status) {
-          case CC:
-            cc(chan, num, val);
-            break;
-          case NOTEON:
-            note(true, chan, num, val);
-            break;
-          case NOTEOFF:
-            note(false, chan, num, val);
-            break;
-        }
-      }
-    } while (1);
   }
 }
 
@@ -275,7 +207,7 @@ void note(int& index, clk::time_point& next_note) {
   if (m == 0) {
     osc::send("/tvca", volume[TONE]);
     osc::send("/nvca", volume[NOISE]);
-    //osc::send("/bvca", volume[BASS]);
+    osc::send("/bvca", volume[BASS]);
     was_note = true;
   } else if (m == 1) {
     osc::send("/tvca", 0.0);
@@ -288,15 +220,30 @@ void note(int& index, clk::time_point& next_note) {
   index++;
 }
 
+void set_freqs() {
+  for (int i = 1; i < 6; i++) {
+    float v = 0.05 * frand() + tone_offset[i] * tone_freq_spread;
+    osc::send("/t" + std::to_string(i + 1), v);
+  }
+}
+
+namespace midi {
+  void process();
+  void open();
+}
+
 //white = saturation 0, value = 1, hue = 1
 
 int main(int argc, char * argv[]) {
   midi::open();
-  osc_server::start(10001);
   //osc::setup("192.168.0.100", "9001"); //main patch
   osc::setup("", "1888"); //jason's mockup, with route through
 
   osc::send("/remote");
+
+  sleep(1);
+
+  osc::send("/vca" + std::to_string(map_vca(0)), 1.0);
 
   osc::send("/nvca", 0.0f);
   osc::send("/tvca", 0.0f);
@@ -305,7 +252,7 @@ int main(int argc, char * argv[]) {
   osc::send("/thpf", 0.0);
   osc::send("/tlpf", 127.0);
 
-  osc::send("/vca" + std::to_string(map_vca(0)), 0.0);
+  osc::send("/formanttime", 10.0);
 
   osc::send("/t1", 65);
   osc::send("/bfreq", 92);
@@ -315,75 +262,13 @@ int main(int argc, char * argv[]) {
     osc::send_led(i, 1.0, 0, 1.0);
   }
 
-  auto set_freqs = [&]{
-    for (int i = 1; i < 6; i++) {
-      float v = 0.05 * frand() + tone_offset[i] * tone_freq_spread;
-      osc::send("/t" + std::to_string(i + 1), v);
-    }
-  };
   set_freqs();
+  set_volumes(0.0);
 
   osc::send("/npan", tone_pan);
 
-
-  osc_server::with_float("/formant_time", [&] (float f) {
-    osc::send("/formanttime", f * 100.0);
-  });
-
-  osc_server::with_float("/formant_period", [&] (float f) {
-    formant_period = milliseconds_type(1 + static_cast<int>(f * 500.0));
-  });
-
-  osc_server::with_float("/formant_center", [&] (float f) {
-      formant_center = static_cast<float>(vaddr.size()) * f;
-  });
-
-  osc_server::with_float("/formant_rand_range", [&] (float f) {
-      formant_range = static_cast<float>(vaddr.size()) * f;
-  });
-
-  osc_server::with_float("/noise_volume", [&] (float f) {
-      volume[NOISE] = f;
-      if (performance_mode == FREE)
-        osc::send("/nvca", f);
-  });
-
-  osc_server::with_float("/tone_volume", [&] (float f) {
-      volume[TONE] = f;
-      if (performance_mode == FREE)
-        osc::send("/tvca", f);
-  });
-
-  osc_server::with_float("/tone_pan_spread", [&] (float f) {
-      tone_pan_spread = f;
-  });
-
-  osc_server::with_float("/tone_freq_spread", [&] (float f) {
-      tone_freq_spread = f * 24;
-      set_freqs();
-  });
-
-  osc_server::with_float("/tone_volume_spread", [&] (float f) {
-      set_volumes(f);
-  });
-
-  osc_server::with_int("/tone_pan", [&] (int v) {
-      if (v > 60 && v < 66)
-        tone_pan_incr = 0.0f;
-      else
-        tone_pan_incr = pan_mult * (static_cast<float>(v - 64) / 64.0);
-  });
-
-  osc_server::with_int("/noise_pan", [&] (int v) {
-      if (v > 60 && v < 66)
-        noise_pan_incr = 0;
-      else
-        noise_pan_incr = pan_mult * (static_cast<float>(v - 64) / 64.0);
-  });
-
   int index_last = -1;
 
-  clk::time_point next_osc = clk::now();
   clk::time_point next_pan = clk::now();
   clk::time_point next_note = clk::now();
   clk::time_point last_formant = clk::now();
@@ -401,12 +286,6 @@ int main(int argc, char * argv[]) {
         osc::send(vaddr[index]);
       index_last = index;
       last_formant = n;
-    }
-
-    if (next_osc < n) {
-      osc_server::process();
-      //next_osc += osc_period;
-      next_osc = n + osc_period;
     }
 
     if (next_note < n) {
@@ -453,3 +332,136 @@ int main(int argc, char * argv[]) {
 
   return 0;
 }
+
+namespace midi {
+  const std::string midi_name = "Bitstream 3X";
+  std::shared_ptr<RtMidiIn> midiin;
+
+#define CC 0xB0
+#define NOTEON 0x90
+#define NOTEOFF 0x80
+
+  void open() {
+    try {
+      midiin = std::make_shared<RtMidiIn>();
+    } catch (RtError &error) {
+      throw std::runtime_error(error.what());
+    }
+
+    // Check inputs.
+    unsigned int nPorts = midiin->getPortCount();
+    for (unsigned int i=0; i<nPorts; i++) {
+      try {
+        std::string name = midiin->getPortName(i);
+        if (name.find(midi_name) != std::string::npos) {
+          midiin->openPort(i);
+          return;
+        }
+      } catch (RtError &error) {
+        throw std::runtime_error(error.what());
+      }
+    }
+    throw std::runtime_error("couldn't connect to midi with port name: " + midi_name);
+  }
+
+  void cc(uint8_t chan, uint8_t num, uint8_t val) {
+    cout << "cc " << (int)num << ": " << (int)val << " chan: " << (int)chan << endl;
+    float f = static_cast<float>(val) / 127.0;
+    switch (num) {
+      case 13:
+        break;
+      case 21:
+        break;
+      case 29:
+        break;
+      case 37:
+        break;
+      case 45:
+        volume[BASS] = f;
+        if (performance_mode == FREE)
+          osc::send("/bvca", f);
+        break;
+
+      case 14:
+        if (val > 60 && val < 70)
+          noise_pan_incr = 0;
+        else
+          noise_pan_incr = pan_mult * (static_cast<float>(val - 64) / 64.0);
+        break;
+      case 22:
+        osc::send("/formanttime", f * 100.0);
+        break;
+      case 30:
+        formant_center = static_cast<float>(vaddr.size()) * f;
+        break;
+      case 38:
+        formant_range = static_cast<float>(vaddr.size()) * f;
+        break;
+      case 46:
+        volume[NOISE] = f;
+        if (performance_mode == FREE)
+          osc::send("/nvca", f);
+        break;
+
+        //last column
+      case 15:
+        if (val > 60 && val < 70)
+          tone_pan_incr = 0.0f;
+        else
+          tone_pan_incr = pan_mult * (static_cast<float>(val - 64) / 64.0);
+        break;
+      case 23:
+        tone_pan_spread = f;
+        break;
+      case 31:
+        tone_freq_spread = f * 24;
+        set_freqs();
+        break;
+      case 39:
+        set_volumes(f);
+        break;
+      case 47:
+        volume[TONE] = f;
+        if (performance_mode == FREE)
+          osc::send("/tvca", f);
+        break;
+
+        //xfade
+      case 48:
+        formant_period = milliseconds_type(1 + static_cast<int>(f * 500.0));
+        break;
+    }
+  }
+
+  void note(bool down, uint8_t chan, uint8_t num, uint8_t vel) {
+    cout << "note" << (down ? "on " : "off ") << (int)num << ": " << (int)vel << " chan: " << (int)chan << endl;
+  }
+
+  void process() {
+    std::vector<unsigned char> message;
+    do {
+      midiin->getMessage(&message);
+      if (message.size() == 0)
+        return;
+
+      if (message.size() == 3) {
+        uint8_t status = (message[0] & 0xF0);
+        uint8_t chan = (message[0] & 0x0F);
+        uint8_t num = message[1];
+        uint8_t val = message[2];
+        switch (status) {
+          case CC:
+            cc(chan, num, val);
+            break;
+          case NOTEON:
+            note(true, chan, num, val);
+            break;
+          case NOTEOFF:
+            note(false, chan, num, val);
+            break;
+        }
+      }
+    } while (1);
+  }
+}
+

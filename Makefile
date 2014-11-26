@@ -5,7 +5,7 @@ CXXFLAGS = -std=c++11 -g -Wall
 CXXFLAGS += `pkg-config liblo --cflags`
 LDFLAGS += `pkg-config liblo --libs` -lrtmidi
 
-SRC = envelope.cpp main.cpp osc_server.cpp
+SRC = envelope.cpp main.cpp
 OBJ = ${SRC:.cpp=.o}
 
 .cpp.o:

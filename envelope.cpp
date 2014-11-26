@@ -12,6 +12,7 @@ void Envelope::increment(float v) { mIncrement = fabs(v); }
 float Envelope::increment() const { return mIncrement; }
 
 void Envelope::restart() { mIndex = 0.0f; }
+void Envelope::set_complete() { mIndex = 1.0f; }
 bool Envelope::complete() const { return mIndex >= 1.0f; }
 bool Envelope::active() const { return mIndex < 1.0f; }
 

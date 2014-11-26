@@ -14,6 +14,8 @@ class Envelope {
     float increment() const;
 
     void restart();
+    void set_complete();
+
     bool complete() const;
     bool active() const;
 

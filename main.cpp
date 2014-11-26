@@ -286,6 +286,7 @@ int main(int argc, char * argv[]) {
   osc::send("/bfreq", 92);
 
   for (int i = 0; i < NUM_LEDS; i++) {
+    leds[i].env.set_complete();
     osc::send_led(i, 0.0, 0.0, 0.0);
   }
 

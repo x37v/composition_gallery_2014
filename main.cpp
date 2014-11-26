@@ -57,7 +57,7 @@ class Led {
 class VolumeEnvelope {
   public:
     float vol = 0.0f;
-    Envelope env = {Envelope::RAMP_UP};
+    Envelope env = {Envelope::RAMP_DOWN};
     float value() {
       return env.value() * vol;
     }

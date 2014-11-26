@@ -54,7 +54,17 @@ class Led {
     Envelope env = {Envelope::TRIANGLE};
 };
 
-std::vector<Led> leds;
+class VolumeEnvelope {
+  public:
+    float vol = 0.0f;
+    Envelope env = {Envelope::RAMP_UP};
+    float value() {
+      return env.value() * vol;
+    }
+};
+
+std::vector<Led> leds(6);
+std::vector<VolumeEnvelope> sounds(3);
 
 /*
    std::vector<float> tone_offset = {
@@ -76,7 +86,6 @@ typedef std::uniform_real_distribution<double> uni_real_distro;
 float formant_center = 0.0f;
 float formant_range = 0.0f;
 
-float volume[3] = {0.0f, 0.0f, 0.1};
 
 clk::duration formant_period = milliseconds_type(1000);
 clk::duration led_period = milliseconds_type(40);
@@ -198,23 +207,38 @@ void draw_leds() {
   was_note = false;
 }
 
+bool sounds_complete() {
+  for (int i = 0; i < sounds.size(); i++) {
+    if (sounds[i].env.active())
+      return false;
+  }
+  return true;
+}
+
+void update_sound_envs() {
+  for (int i = 0; i < sounds.size(); i++)
+    sounds[i].env.update();
+}
+
+void send_sounds() {
+  osc::send("/tvca", sounds[TONE].value());
+  osc::send("/nvca", sounds[NOISE].value());
+  osc::send("/bvca", sounds[BASS].value());
+}
+
 void note(int& index, clk::time_point& next_note) {
   next_note = clk::now() + milliseconds_type(static_cast<int>(800.0 * frand()));
-  int m = index % 2;
-  if (m == 0) {
-    osc::send("/tvca", volume[TONE]);
-    osc::send("/nvca", volume[NOISE]);
-    osc::send("/bvca", volume[BASS]);
+  if (sounds_complete()) {
+    for (int i = 0; i < sounds.size(); i++) {
+      sounds[i].env.restart();
+      sounds[i].env.increment(1.0);
+    }
     was_note = true;
-  } else if (m == 1) {
-    osc::send("/tvca", 0.0);
-    osc::send("/nvca", 0.0);
-    osc::send("/bvca", 0.0);
+    send_sounds();
   } else {
-    //index = 0;
-    //return;
+    update_sound_envs();
+    send_sounds();
   }
-  index++;
 }
 
 void set_freqs() {
@@ -241,7 +265,6 @@ int main(int argc, char * argv[]) {
   sleep(1);
   
   struct sigaction sigIntHandler;
-
   sigIntHandler.sa_handler = sigint_handler;
   sigemptyset(&sigIntHandler.sa_mask);
   sigIntHandler.sa_flags = 0;
@@ -263,7 +286,6 @@ int main(int argc, char * argv[]) {
   osc::send("/bfreq", 92);
 
   for (int i = 0; i < NUM_LEDS; i++) {
-    leds.push_back(Led());
     osc::send_led(i, 0.0, 0.0, 0.0);
   }
 
@@ -388,7 +410,7 @@ namespace midi {
       case 37:
         break;
       case 45:
-        volume[BASS] = f;
+        sounds[BASS].vol = f;
         if (performance_mode == FREE)
           osc::send("/bvca", f);
         break;
@@ -409,7 +431,7 @@ namespace midi {
         formant_range = static_cast<float>(vaddr.size()) * f;
         break;
       case 46:
-        volume[NOISE] = f;
+        sounds[NOISE].vol = f;
         if (performance_mode == FREE)
           osc::send("/nvca", f);
         break;
@@ -432,7 +454,7 @@ namespace midi {
         set_volumes(f);
         break;
       case 47:
-        volume[TONE] = f;
+        sounds[TONE].vol = f;
         if (performance_mode == FREE)
           osc::send("/tvca", f);
         break;

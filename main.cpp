@@ -150,24 +150,29 @@ namespace midi {
 
   void process() {
     std::vector<unsigned char> message;
-    midiin->getMessage(&message);
-    if (message.size() != 3)
-      return;
-    uint8_t status = (message[0] & 0xF0);
-    uint8_t chan = (message[0] & 0x0F);
-    uint8_t num = message[1];
-    uint8_t val = message[2];
-    switch (status) {
-      case CC:
-        cc(chan, num, val);
-        break;
-      case NOTEON:
-        note(true, chan, num, val);
-        break;
-      case NOTEOFF:
-        note(false, chan, num, val);
-        break;
-    }
+    do {
+      midiin->getMessage(&message);
+      if (message.size() == 0)
+        return;
+
+      if (message.size() == 3) {
+        uint8_t status = (message[0] & 0xF0);
+        uint8_t chan = (message[0] & 0x0F);
+        uint8_t num = message[1];
+        uint8_t val = message[2];
+        switch (status) {
+          case CC:
+            cc(chan, num, val);
+            break;
+          case NOTEON:
+            note(true, chan, num, val);
+            break;
+          case NOTEOFF:
+            note(false, chan, num, val);
+            break;
+        }
+      }
+    } while (1);
   }
 }
 

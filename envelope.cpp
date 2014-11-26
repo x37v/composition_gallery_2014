@@ -25,7 +25,7 @@ float Envelope::value() const {
       if (mIndex <= 0.5f)
         return mIndex * 2.0f;
       else
-        return std::min(0.0f, 2.0f - 2.0f * mIndex);
+        return std::max(0.0f, 2.0f - 2.0f * mIndex);
     case HALF_SIN:
       if (mIndex >= 1.0f)
         return 0.0f;

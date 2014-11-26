@@ -10,11 +10,18 @@
 #include "envelope.h"
 #include "RtMidi.h"
 #include <memory>
+#include <signal.h>
 
 #define NUM_LEDS 6
 
 using std::cout;
 using std::endl;
+
+bool done = false;
+
+void sigint_handler(int s){
+  done = true;
+}
 
 enum {
   TONE = 0,
@@ -40,6 +47,8 @@ std::vector<float> tone_offset = {
   1.0 / 17.0,
 };
 
+std::vector<Envelope> led_envs;
+
 /*
    std::vector<float> tone_offset = {
    0.0,
@@ -51,7 +60,7 @@ std::vector<float> tone_offset = {
    };
 */
 
-preformance_mode_t performance_mode = FREE;
+preformance_mode_t performance_mode = NOTES;
 
 typedef std::chrono::steady_clock clk;
 typedef std::chrono::duration<int,std::milli> milliseconds_type;
@@ -146,7 +155,7 @@ int led_offset = 0;
 float color = 0;
 
 void draw_leds() {
-#if 1
+#if 0
   if (was_note) {
     led_offset = frand() * static_cast<float>(NUM_LEDS);
     for (int i = 0; i < NUM_LEDS; i++) {
@@ -165,13 +174,14 @@ void draw_leds() {
   }
 #else
 
-  if (was_note && leds[0][2] == 0.0f && leds[3][2] == 0.0f) {
+  if (was_note && led_envs.front().complete() && led_envs.back().complete()) {
     led_offset = 0;
     color = frand();
     for (int i = 0; i < NUM_LEDS / 2; i++) {
-      leds[i][0] = -color;
+      leds[i][0] = color;
       leds[i][1] = 1.0;
       leds[i][2] = 0.0f;
+      led_envs[i].restart();
     }
   } else {
     led_offset++;
@@ -179,23 +189,16 @@ void draw_leds() {
 
   if (led_offset == 16) {
     for (int i = 3; i < NUM_LEDS; i++) {
-      leds[i][0] = -color;
+      leds[i][0] = color;
       leds[i][1] = 1.0;
       leds[i][2] = 0.0;
+      led_envs[i].restart();
     }
   }
 
   for (int i = 0; i < NUM_LEDS; i++) {
-    osc::send_led(i, fabs(leds[i][0]), leds[i][1], leds[i][2]);
-    float incr = (leds[i][0] < 0) ? 0.047f : -0.047f;
-    leds[i][2] = leds[i][2] + incr;
-    if (leds[i][0] < 0.0) {
-      if (leds[i][2] >= 1) {
-        leds[i][2] = 1;
-        leds[i][0] = -leds[i][0];
-      }
-    } 
-    leds[i][2] = std::min(1.0f, std::max(0.0f, leds[i][2]));
+    osc::send_led(i, leds[i][0], leds[i][1], led_envs[i].value());
+    led_envs[i].update();
   }
 #endif
   was_note = false;
@@ -242,6 +245,14 @@ int main(int argc, char * argv[]) {
   osc::send("/remote");
 
   sleep(1);
+  
+  struct sigaction sigIntHandler;
+
+  sigIntHandler.sa_handler = sigint_handler;
+  sigemptyset(&sigIntHandler.sa_mask);
+  sigIntHandler.sa_flags = 0;
+
+  sigaction(SIGINT, &sigIntHandler, NULL);
 
   osc::send("/vca" + std::to_string(map_vca(0)), 1.0);
 
@@ -258,6 +269,7 @@ int main(int argc, char * argv[]) {
   osc::send("/bfreq", 92);
 
   for (int i = 0; i < NUM_LEDS; i++) {
+    led_envs.push_back(Envelope(Envelope::TRIANGLE));
     leds.push_back({0.0f, 0.0f, 0.0f});
     osc::send_led(i, 1.0, 0, 1.0);
   }
@@ -276,7 +288,7 @@ int main(int argc, char * argv[]) {
 
   int note_index = 0;
 
-  while (1) {
+  while (!done) {
     midi::process();
 
     clk::time_point n = clk::now();
@@ -329,6 +341,12 @@ int main(int argc, char * argv[]) {
       }
     }
   }
+
+  osc::send("/nvca", 0.0f);
+  osc::send("/tvca", 0.0f);
+  osc::send("/bvca", 0.0f);
+
+  sleep(1);
 
   return 0;
 }

@@ -211,6 +211,10 @@ namespace led {
   }
 
   int round(int index) {
+    //turn around sometimes
+    if ((index % 256) > 128) {
+      index = 5 - index;
+    }
     index = index % leds.size();
     //there must be better math but, not sure what it is right now
     switch (index) {
@@ -234,14 +238,14 @@ namespace led {
       if (draw_count % 2 == 0) {
         color = wrap1(rand_centered(_start, _start_rand, 0.5));
       } else {
-        color = wrap1(color + rand_centered(_offset, _offset_rand, 0.f));
+        color = wrap1(color + rand_centered(_offset, _offset_rand, 0.5f));
       }
-      int l = 0;
-      for (int i = 0; i < 6; i++) {
-        l = rand() % leds.size();
-        if (leds[l].env.complete())
-          break;
-      }
+      int l = round(draw_count);
+      //for (int i = 0; i < 6; i++) {
+        //l = rand() % leds.size();
+        //if (leds[l].env.complete())
+          //break;
+      //}
       leds[l].hue = color;
       leds[l].sat = _saturation;
       leds[l].env.restart();

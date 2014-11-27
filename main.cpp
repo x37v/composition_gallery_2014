@@ -47,6 +47,17 @@ std::vector<float> tone_offset = {
   1.0 / 17.0,
 };
 
+std::vector<float> notes = {
+  0.0,
+  //1.0 / 2.0,
+  3.0,
+  5.0,
+  7.0,
+  11.0,
+  13.0,
+  17.0,
+};
+
 class Led {
   public:
     float hue = 1.0f;
@@ -101,6 +112,9 @@ float noise_pan_incr = 0.0f;
 float tone_pan_incr = 0.0f;
 float tone_pan_spread = 1.0f;
 float tone_freq_spread = 0.0f;
+
+float note_length_max = 80.0f;
+float note_spacing_max = 400.0f;
 
 const float pan_mult = 0.05f;
 
@@ -169,29 +183,52 @@ bool was_note = false;
 int led_offset = 0;
 float color = 0;
 
+int num_leds_active() {
+  int cnt = 0;
+  for (int i = 0; i < leds.size(); i++) {
+    if (leds[i].env.active())
+      cnt++;
+  }
+  return cnt;
+}
+
+int round(int index) {
+  index = index % leds.size();
+  //there must be better math but, not sure what it is right now
+  switch (index) {
+    case 3:
+      return 5;
+    case 4:
+      return 4;
+    case 5:
+      return 3;
+  }
+  return index;
+}
+
 void draw_leds() {
 #if 0
-  if (was_note) {
-    led_offset = frand() * static_cast<float>(NUM_LEDS);
-    for (int i = 0; i < NUM_LEDS; i++) {
-      int l = (led_offset + i) % NUM_LEDS;
-      if (leds[l][2] == 0.0f) {
-        leds[l][0] = frand();
-        leds[l][1] = 1.0;
-        leds[l][2] = std::max(0.0f, volume[TONE] - frand() * 0.1f);
-        break;
-      }
+  if (num_leds_active() < 2) {
+    int l = round(led_offset++);
+    if (l == 0) {
+      float c = frand();
+      for (int i = 0; i < leds.size(); i++)
+        leds[i].hue = c;
     }
+    leds[l].sat = 1.0;
+    leds[l].env.restart();
+    leds[l].env.mode(Envelope::HALF_SIN);
+    leds[l].env.increment(0.4f);
   }
 #else
-  if (was_note && leds.front().env.complete() && leds.back().env.complete()) {
+  if (was_note && num_leds_active() == 0) {
     color = frand();
     for (int i = 0; i < NUM_LEDS / 2; i++) {
       leds[i].hue = color;
       leds[i].sat = 1.0;
       leds[i].env.restart();
     }
-  } else if (!leds.front().env.complete() && 
+  } else if (leds.front().env.active() && 
       leds.front().env.value() > 0.66 && leds.back().env.complete()) { //XXX make value configurable?
     for (int i = 3; i < NUM_LEDS; i++) {
       leds[i].hue = leds[0].hue;
@@ -201,7 +238,8 @@ void draw_leds() {
   }
 #endif
   for (int i = 0; i < NUM_LEDS; i++) {
-    osc::send_led(i, leds[i].hue, leds[i].sat, leds[i].env.value());
+    if (leds[i].env.active())
+      osc::send_led(i, leds[i].hue, leds[i].sat, leds[i].env.value());
     leds[i].env.update();
   }
   was_note = false;
@@ -227,8 +265,8 @@ void send_sounds() {
 }
 
 void note(int& index, clk::time_point& next_note) {
-  next_note = clk::now() + milliseconds_type(static_cast<int>(800.0 * frand()));
   if (sounds_complete()) {
+    next_note = clk::now() + milliseconds_type(static_cast<int>(note_length_max * frand()));
     for (int i = 0; i < sounds.size(); i++) {
       sounds[i].env.restart();
       sounds[i].env.increment(1.0);
@@ -238,6 +276,7 @@ void note(int& index, clk::time_point& next_note) {
   } else {
     update_sound_envs();
     send_sounds();
+    next_note = clk::now() + milliseconds_type(static_cast<int>(note_spacing_max * frand()));
   }
 }
 
@@ -402,6 +441,20 @@ namespace midi {
     cout << "cc " << (int)num << ": " << (int)val << " chan: " << (int)chan << endl;
     float f = static_cast<float>(val) / 127.0;
     switch (num) {
+      case 8:
+        note_length_max = 10.0 * f * 600.0;
+        break;
+      case 16:
+        note_spacing_max = 10.0 * f * 100.0;
+        break;
+      case 24:
+        break;
+      case 32:
+        break;
+      case 40:
+        break;
+
+
       case 13:
         break;
       case 21:

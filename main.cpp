@@ -310,11 +310,11 @@ int main(int argc, char * argv[]) {
 
   sigaction(SIGINT, &sigIntHandler, NULL);
 
-  osc::send("/vca" + std::to_string(map_vca(0)), 1.0);
-
   osc::send("/nvca", 0.0f);
   osc::send("/tvca", 0.0f);
   osc::send("/bvca", 0.0f);
+
+  osc::send("/vca" + std::to_string(map_vca(0)), 1.0);
 
   osc::send("/thpf", 0.0);
   osc::send("/tlpf", 127.0);
@@ -340,6 +340,28 @@ int main(int argc, char * argv[]) {
   clk::time_point next_note = clk::now();
   clk::time_point last_formant = clk::now();
   clk::time_point next_led = clk::now();
+
+  /*
+   * percussive, vocal..
+   *
+  osc::send("/formanttime", 0.0);
+  next_note = clk::now() + milliseconds_type(40);
+  while (clk::now() < next_note) {}
+
+  while (1) {
+    for (int i = 0; i < vaddr.size(); i++) {
+      next_note = clk::now() + milliseconds_type(100);
+      while (clk::now() < next_note) {}
+
+      osc::send("/nvca", 1.0f);
+      next_note = clk::now() + milliseconds_type(30);
+      while (clk::now() < next_note) {}
+      osc::send(vaddr[rand() % vaddr.size()]);
+      osc::send("/nvca", 0.0f);
+    }
+  }
+  return 0;
+  */
 
   int note_index = 0;
 

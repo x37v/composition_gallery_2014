@@ -11,12 +11,13 @@ Envelope::mode_t Envelope::mode() const { return mMode; }
 void Envelope::increment(float v) { mIncrement = fabs(v); }
 float Envelope::increment() const { return mIncrement; }
 
-void Envelope::restart() { mIndex = 0.0f; }
+void Envelope::restart() { mIndex = 0.0f; mActive = true; }
 void Envelope::set_complete() { mIndex = 1.0f; }
 bool Envelope::complete() const { return mIndex >= 1.0f; }
-bool Envelope::active() const { return mIndex < 1.0f; }
+bool Envelope::active() const { return mActive; }
 
 bool Envelope::update() { 
+  mActive = mIndex < 1.0f;
   mIndex = std::min(mIncrement + mIndex, 1.0f);
   return complete();
 }

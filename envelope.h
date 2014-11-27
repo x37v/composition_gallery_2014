@@ -23,7 +23,8 @@ class Envelope {
     float value() const;
   private:
     mode_t mMode = RAMP_UP;
-    float mIndex = 0.0f;
+    float mIndex = 1.0f; //start off complete
     float mIncrement = 0.01f;
+    bool mActive = false;
 };
 #endif

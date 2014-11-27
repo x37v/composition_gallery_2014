@@ -156,6 +156,13 @@ bool was_note = false;
 namespace led {
   clk::time_point next_draw = clk::now();
 
+  enum led_mode_t {
+    RANDOM,
+    CIRCLE,
+    PULSE
+  };
+  led_mode_t mode = PULSE;
+
   float color = 0;
 
   float _start = 0.0f;
@@ -167,6 +174,8 @@ namespace led {
   float _rate_rand = 0.1f;
   float _length = 0.5f;
   float _length_rand = 0.1f;
+
+  int _period_length = 2;
 
   float _bright = 0.0f;
   float _saturation = 1.0f;
@@ -198,6 +207,10 @@ namespace led {
     _length_rand = v;
   }
 
+  void period_length(int v) {
+    _period_length = 2 + v;
+  }
+
   void bright(float v) { _bright = v; }
   void saturation(float v) { _saturation = v; }
 
@@ -212,7 +225,7 @@ namespace led {
 
   int round(int index) {
     //turn around sometimes
-    if ((index % 256) > 128) {
+    if ((index % _period_length) > (_period_length >> 1)) {
       index = 5 - index;
     }
     index = index % leds.size();
@@ -229,10 +242,49 @@ namespace led {
   }
 
   unsigned int draw_count = 0;
-  void draw() {
-    clk::time_point now = clk::now();
 
-    if (now >= next_draw) {
+  bool ready_to_draw() {
+    clk::time_point now = clk::now();
+    switch (mode) {
+      case CIRCLE:
+      case RANDOM:
+      case PULSE:
+        return (now >= next_draw);
+    }
+  }
+
+  int row_count = 0;
+  int row_index = 0;
+
+  int led_index() {
+    int l = 0;
+    switch (mode) {
+      case CIRCLE:
+        l = round(draw_count);
+        break;
+      case PULSE:
+        {
+          if (row_count >= _period_length) {
+            row_count = 0;
+            row_index = (row_index + 1) % 3;
+          } 
+          l = (draw_count % 2 == (row_index % 2)) ? row_index : (row_index + 3);
+          row_count++;
+        }
+        break;
+      case RANDOM:
+        for (int i = 0; i < 6; i++) {
+          l = rand() % leds.size();
+          if (leds[l].env.complete())
+            break;
+        }
+        break;
+    }
+    return l;
+  }
+
+  void draw() {
+    if (ready_to_draw()) {
       update_next();
       //random
       if (draw_count % 2 == 0) {
@@ -240,21 +292,15 @@ namespace led {
       } else {
         color = wrap1(color + rand_centered(_offset, _offset_rand, 0.5f));
       }
-      int l = round(draw_count);
-      //for (int i = 0; i < 6; i++) {
-        //l = rand() % leds.size();
-        //if (leds[l].env.complete())
-          //break;
-      //}
+      int l = led_index();
       leds[l].hue = color;
       leds[l].sat = _saturation;
       leds[l].env.restart();
       leds[l].env.mode(Envelope::HALF_SIN);
+
       float inc = _length > 0.0f ? (led_length_mult / (4.0 * _length)) : 0.01f;
       leds[l].env.increment(inc);
       leds[l].val_mut = _bright;
-      //cout << "led[" << l << " : " << _bright << " : " << color << " inc: " << inc << endl;
-      //cout << draw_count << endl;
 
       draw_count++;
     }
@@ -512,6 +558,10 @@ int main(int argc, char * argv[]) {
   osc::send("/tvca", 0.0f);
   osc::send("/bvca", 0.0f);
 
+  for (int i = 0; i < leds.size(); i++) {
+    osc::send_led(i, 0.0, 0.0, 0.0);
+  }
+
   sleep(1);
 
   return 0;
@@ -580,7 +630,8 @@ namespace midi {
         led::length(f);
         break;
       case 33:
-        led::length_rand(f);
+        //led::length_rand(f);
+        led::period_length(val);
         break;
       case 41:
         led::saturation(f);

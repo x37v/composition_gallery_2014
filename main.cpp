@@ -64,6 +64,21 @@ std::vector<float> notes = {
   17.0,
 };
 
+const std::vector<std::string> vaddr = { "/vowel_ee", "/vowel_ih", "/vowel_eh", "/vowel_ae", "/vowel_a", "/vowel_oo", "/vowel_uh", "/vowel_o", "/vowel_ah"};
+std::vector<std::string> perc_start = {
+  "/vowel_ee",
+  "/vowel_oo",
+  "/vowel_ah",
+};
+
+std::vector<std::string> perc_end = {
+  "/vowel_eh",
+  "/vowel_ae",
+  "/vowel_a",
+  "/vowel_uh",
+  "/vowel_o",
+};
+
 class Led {
   public:
     float hue = 1.0f;
@@ -85,7 +100,7 @@ class VolumeEnvelope {
 std::vector<Led> leds(6);
 std::vector<VolumeEnvelope> sounds(3);
 
-preformance_mode_t performance_mode = NOTES;
+preformance_mode_t performance_mode = FREE;
 
 typedef std::chrono::steady_clock clk;
 typedef std::chrono::duration<int,std::milli> milliseconds_type;
@@ -107,7 +122,7 @@ float tone_pan = 0.5f;
 
 float noise_pan_incr = 0.0f;
 float tone_pan_incr = 0.0f;
-float tone_pan_spread = 1.0f;
+float tone_pan_spread = 0.0f;
 float tone_freq_spread = 0.0f;
 
 float note_length_max = 80.0f;
@@ -115,32 +130,68 @@ float note_spacing_max = 400.0f;
 
 const float pan_mult = 0.05f;
 
-const std::vector<std::string> vaddr = { "/vowel_ee", "/vowel_ih", "/vowel_eh", "/vowel_ae", "/vowel_a", "/vowel_oo", "/vowel_uh", "/vowel_o", "/vowel_ah"};
-
 namespace osc {
   std::mutex osc_mutex; 
   lo_address osc_address = nullptr;
+  lo_bundle _bundle = nullptr;
   
   void setup(std::string host, std::string port) {
+    std::lock_guard<std::mutex> lock(osc_mutex);
     if (osc_address)
       lo_address_free(osc_address);
     osc_address = lo_address_new(host.size() ? host.c_str() : NULL, port.c_str());
   }
 
+  void start_bundle() {
+    /*
+    std::lock_guard<std::mutex> lock(osc_mutex);
+    _bundle = lo_bundle_new(LO_TT_IMMEDIATE);
+    */
+  }
+
+  void send_bundle() {
+    /*
+    std::lock_guard<std::mutex> lock(osc_mutex);
+    lo_send_bundle(osc_address, _bundle);
+    lo_bundle_free_messages(_bundle);
+    _bundle = nullptr;
+    */
+  }
+
+  void bundle_add(std::string path, lo_message m) {
+    if (lo_bundle_add_message(_bundle, path.c_str(), m) != 0) {
+      cout << "couldn't add message" << endl;
+    }
+  }
+
   void send(const std::string addr) {
     std::lock_guard<std::mutex> lock(osc_mutex);
     lo_send(osc_address, addr.c_str(), "");
+    //lo_message m = lo_message_new();
+    //bundle_add(addr, m);
   }
 
   void send(const std::string addr, float v) {
     std::lock_guard<std::mutex> lock(osc_mutex);
     lo_send(osc_address, addr.c_str(), "f", v);
+    //lo_message m = lo_message_new();
+    //lo_message_add_float(m, v);
+    //bundle_add(addr, m);
   }
 
   void send_led(int index, float h, float s, float l) {
     std::lock_guard<std::mutex> lock(osc_mutex);
     //l = std::min(1.0f, std::max(0.0f, static_cast<float>(std::sin(l * M_PI / 2.0))));
-    lo_send(osc_address, ("/led" + std::to_string(index + 1)).c_str(), "fff", h, s, l);
+    std::string addr = "/led" + std::to_string(index + 1);
+    lo_send(osc_address, addr.c_str(), "fff", h, s, l);
+
+    /*
+    lo_message m = lo_message_new();
+    lo_message_add_float(m, h);
+    lo_message_add_float(m, s);
+    lo_message_add_float(m, l);
+    bundle_add(addr, m);
+    */
   }
 }
 
@@ -154,7 +205,7 @@ float rand_centered(float center, float rand_amt, float max_offset = 1.0f) {
 bool was_note = false;
 
 namespace led {
-  clk::time_point next_draw = clk::now();
+  clk::time_point next_led_change = clk::now();
 
   enum led_mode_t {
     RANDOM,
@@ -163,7 +214,7 @@ namespace led {
     STROBE_RANDOM,
     TOTAL
   };
-  led_mode_t mode = TOTAL;
+  led_mode_t mode = RANDOM;
 
   float color = 0;
 
@@ -184,15 +235,14 @@ namespace led {
 
   void update_next() {
     if (mode == TOTAL) {
-      next_draw = clk::now() + milliseconds_type(static_cast<int>(100.0f + rand_centered(_rate * 8000, _rate_rand, _rate * 2000)));
+      next_led_change = clk::now() + milliseconds_type(static_cast<int>(100.0f + rand_centered(_rate * 8000, _rate_rand, _rate * 2000)));
     } else {
-      next_draw = clk::now() + milliseconds_type(static_cast<int>(100.0f + rand_centered(_rate * 2000, _rate_rand, _rate * 2000)));
+      next_led_change = clk::now() + milliseconds_type(static_cast<int>(100.0f + rand_centered(_rate * 2000, _rate_rand, _rate * 2000)));
     }
   }
 
   void start(float v) {
     _start = v;
-    cout << "led start: " << _start << endl;
   }
   void start_rand(float v) {
     _start_rand = v;
@@ -257,7 +307,7 @@ namespace led {
       default:
         break;
     }
-    return (now >= next_draw);
+    return (now >= next_led_change) && _bright > 0.0f;
   }
 
   int row_count = 0;
@@ -300,6 +350,8 @@ namespace led {
         return Envelope::RAMP_DOWN;
       case STROBE_RANDOM:
         return Envelope::SQUARE;
+      default:
+        break;
     }
     return Envelope::HALF_SIN;
   }
@@ -381,6 +433,9 @@ namespace led {
 }
 
 namespace snd {
+  clk::time_point next_note = clk::now();
+  clk::time_point next_pan = clk::now();
+
   bool complete() {
     for (int i = 0; i < sounds.size(); i++) {
       if (sounds[i].env.active())
@@ -449,113 +504,29 @@ namespace snd {
       osc::send("/vca" + std::to_string(map_vca(i)), v);
     }
   }
-}
 
-namespace midi {
-  void process();
-  void open();
-}
-
-//white = saturation 0, value = 1, hue = 1
-
-int main(int argc, char * argv[]) {
-  midi::open();
-  //osc::setup("192.168.0.100", "9001"); //main patch
-  osc::setup("", "1888"); //jason's mockup, with route through
-
-  osc::send("/remote");
-
-  sleep(1);
-  
-  struct sigaction sigIntHandler;
-  sigIntHandler.sa_handler = sigint_handler;
-  sigemptyset(&sigIntHandler.sa_mask);
-  sigIntHandler.sa_flags = 0;
-
-  sigaction(SIGINT, &sigIntHandler, NULL);
-
-  osc::send("/nvca", 0.0f);
-  osc::send("/tvca", 0.0f);
-  osc::send("/bvca", 0.0f);
-
-  osc::send("/vca" + std::to_string(snd::map_vca(0)), 1.0);
-
-  osc::send("/thpf", 0.0);
-  osc::send("/tlpf", 127.0);
-
-  osc::send("/formanttime", 10.0);
-
-  osc::send("/t1", 65);
-  osc::send("/bfreq", 92);
-
-  for (int i = 0; i < NUM_LEDS; i++) {
-    leds[i].env.set_complete();
-    osc::send_led(i, 0.0, 0.0, 0.0);
-  }
-
-  snd::set_freqs();
-  snd::set_volumes(0.0);
-
-  osc::send("/npan", tone_pan);
-
-  int index_last = -1;
-
-  clk::time_point next_pan = clk::now();
-  clk::time_point next_note = clk::now();
-  clk::time_point last_formant = clk::now();
-  clk::time_point next_led = clk::now();
-
-  /*
-   * percussive, vocal..
-   *
-  osc::send("/formanttime", 0.0);
-  next_note = clk::now() + milliseconds_type(40);
-  while (clk::now() < next_note) {}
-
-  while (1) {
-    for (int i = 0; i < vaddr.size(); i++) {
-      next_note = clk::now() + milliseconds_type(100);
-      while (clk::now() < next_note) {}
-
-      osc::send("/nvca", 1.0f);
-      next_note = clk::now() + milliseconds_type(30);
-      while (clk::now() < next_note) {}
-      osc::send(vaddr[rand() % vaddr.size()]);
-      osc::send("/nvca", 0.0f);
-    }
-  }
-  return 0;
-  */
-
-  int note_index = 0;
-
-  while (!done) {
-    midi::process();
-
+  unsigned int note_index = 0;
+  void run() {
     clk::time_point n = clk::now();
-
-    /*
-    if (last_formant + formant_period < n) {
-      int index = static_cast<int>(round(formant_center + frand() * formant_range)) % vaddr.size();
-      if (index != index_last)
-        osc::send(vaddr[index]);
-      index_last = index;
-      last_formant = n;
+    if (next_note <= n) {
+      if (note_index % 2 == 0) {
+        int i = static_cast<int>(round((formant_center + frand() * formant_range) * perc_start.size())) % perc_start.size();
+        osc::send("/formanttime", 0.0);
+        osc::send(perc_start[i]);
+        osc::send("/tvca", sounds[TONE].vol);
+        osc::send("/nvca", sounds[NOISE].vol);
+        next_note = clk::now() + milliseconds_type(30);
+      } else {
+        int i = static_cast<int>(round((formant_center + frand() * formant_range) * perc_end.size())) % perc_end.size();
+        osc::send(perc_end[i]);
+        osc::send("/tvca", 0.0f);
+        osc::send("/nvca", 0.0f);
+        next_note = clk::now() + milliseconds_type(1000 + rand() % 1000);
+      }
+      note_index++;
     }
 
-    if (next_note < n) {
-      if (performance_mode == NOTES)
-        snd::note(note_index, next_note);
-    }
-    */
-
-    if (next_led < n) {
-      led::draw();
-      next_led = n + led_period;
-    }
-
-    /*
-    if (next_pan < n) {
+    if (next_pan <= n) {
       next_pan = n + pan_period;
 
       if (true) {
@@ -585,9 +556,94 @@ int main(int argc, char * argv[]) {
         osc::send("/npan", noise_pan * 360);
       }
     }
-    */
+  }
+}
+
+namespace midi {
+  void process();
+  void open();
+}
+
+//white = saturation 0, value = 1, hue = 1
+
+int main(int argc, char * argv[]) {
+  midi::open();
+  //osc::setup("192.168.0.100", "9001"); //main patch
+  osc::setup("", "1888"); //jason's mockup, with route through
+
+  osc::start_bundle();
+  osc::send("/remote");
+  osc::send_bundle();
+
+  sleep(1);
+  
+  struct sigaction sigIntHandler;
+  sigIntHandler.sa_handler = sigint_handler;
+  sigemptyset(&sigIntHandler.sa_mask);
+  sigIntHandler.sa_flags = 0;
+
+  sigaction(SIGINT, &sigIntHandler, NULL);
+
+  osc::start_bundle();
+  osc::send("/nvca", 0.0f);
+  osc::send("/tvca", 0.0f);
+  osc::send("/bvca", 0.0f);
+
+  osc::send("/vca" + std::to_string(snd::map_vca(0)), 1.0);
+
+  osc::send("/thpf", 0.0);
+  osc::send("/tlpf", 127.0);
+
+  osc::send("/formanttime", 10.0);
+
+  osc::send("/t1", 65);
+  osc::send("/bfreq", 92);
+
+  for (int i = 0; i < NUM_LEDS; i++) {
+    leds[i].env.set_complete();
+    osc::send_led(i, 0.0, 0.0, 0.0);
   }
 
+  snd::set_freqs();
+  snd::set_volumes(0.0);
+
+  osc::send("/npan", tone_pan);
+  osc::send_bundle();
+
+  clk::time_point last_formant = clk::now();
+  clk::time_point next_led = clk::now();
+
+  int formant_index_last = -1;
+  while (!done) {
+    osc::start_bundle();
+    midi::process();
+
+    clk::time_point n = clk::now();
+
+    if (last_formant + formant_period < n) {
+      int index = static_cast<int>(round(formant_center * vaddr.size() + frand() * formant_range * vaddr.size())) % vaddr.size();
+      if (index != formant_index_last && (sounds[NOISE].vol > 0.01f || sounds[TONE].vol > 0.01f))
+        osc::send(vaddr[index]);
+      formant_index_last = index;
+      last_formant = n;
+    }
+
+    /*
+    if (next_note < n) {
+      if (performance_mode == NOTES)
+        snd::note(note_index, next_note);
+    }
+    */
+
+    if (next_led < n) {
+      led::draw();
+      next_led = n + led_period;
+    }
+    //snd::run();
+    osc::send_bundle();
+  }
+
+  osc::start_bundle();
   osc::send("/nvca", 0.0f);
   osc::send("/tvca", 0.0f);
   osc::send("/bvca", 0.0f);
@@ -595,6 +651,7 @@ int main(int argc, char * argv[]) {
   for (int i = 0; i < leds.size(); i++) {
     osc::send_led(i, 0.0, 0.0, 0.0);
   }
+  osc::send_bundle();
 
   sleep(1);
 
@@ -696,10 +753,10 @@ namespace midi {
         osc::send("/formanttime", f * 100.0);
         break;
       case 30:
-        formant_center = static_cast<float>(vaddr.size()) * f;
+        formant_center = f;
         break;
       case 38:
-        formant_range = static_cast<float>(vaddr.size()) * f;
+        formant_range = f;
         break;
       case 46:
         sounds[NOISE].vol = f;

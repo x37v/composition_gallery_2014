@@ -2,8 +2,11 @@ CXX = clang++
 
 CXXFLAGS = -std=c++11 -g -Wall
 
-CXXFLAGS += `pkg-config liblo --cflags`
-LDFLAGS += `pkg-config liblo --libs` -lrtmidi
+#CXXFLAGS += `pkg-config liblo --cflags`
+#LDFLAGS += `pkg-config liblo --libs` -lrtmidi
+
+CXXFLAGS += -I.
+LDFLAGS += -lrtmidi liblo.a
 
 SRC = envelope.cpp main.cpp
 OBJ = ${SRC:.cpp=.o}
@@ -12,7 +15,7 @@ OBJ = ${SRC:.cpp=.o}
 	${CXX} -c ${CXXFLAGS} -o $*.o $<
 
 aarun: ${OBJ}
-	${CXX} ${CXXFLAGS} ${LDFLAGS} -o aarun ${OBJ}
+	${CXX} ${CXXFLAGS} -o aarun ${OBJ} ${LDFLAGS} 
 
 clean:
 	rm -rf aarun ${OBJ}

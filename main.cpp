@@ -133,7 +133,6 @@ const float pan_mult = 0.05f;
 namespace osc {
   std::mutex osc_mutex; 
   lo_address osc_address = nullptr;
-  lo_bundle _bundle = nullptr;
   
   void setup(std::string host, std::string port) {
     std::lock_guard<std::mutex> lock(osc_mutex);
@@ -142,41 +141,15 @@ namespace osc {
     osc_address = lo_address_new(host.size() ? host.c_str() : NULL, port.c_str());
   }
 
-  void start_bundle() {
-    /*
-    std::lock_guard<std::mutex> lock(osc_mutex);
-    _bundle = lo_bundle_new(LO_TT_IMMEDIATE);
-    */
-  }
-
-  void send_bundle() {
-    /*
-    std::lock_guard<std::mutex> lock(osc_mutex);
-    lo_send_bundle(osc_address, _bundle);
-    lo_bundle_free_messages(_bundle);
-    _bundle = nullptr;
-    */
-  }
-
-  void bundle_add(std::string path, lo_message m) {
-    if (lo_bundle_add_message(_bundle, path.c_str(), m) != 0) {
-      cout << "couldn't add message" << endl;
-    }
-  }
 
   void send(const std::string addr) {
     std::lock_guard<std::mutex> lock(osc_mutex);
     lo_send(osc_address, addr.c_str(), "");
-    //lo_message m = lo_message_new();
-    //bundle_add(addr, m);
   }
 
   void send(const std::string addr, float v) {
     std::lock_guard<std::mutex> lock(osc_mutex);
     lo_send(osc_address, addr.c_str(), "f", v);
-    //lo_message m = lo_message_new();
-    //lo_message_add_float(m, v);
-    //bundle_add(addr, m);
   }
 
   void send_led(int index, float h, float s, float l) {
@@ -184,14 +157,6 @@ namespace osc {
     //l = std::min(1.0f, std::max(0.0f, static_cast<float>(std::sin(l * M_PI / 2.0))));
     std::string addr = "/led" + std::to_string(index + 1);
     lo_send(osc_address, addr.c_str(), "fff", h, s, l);
-
-    /*
-    lo_message m = lo_message_new();
-    lo_message_add_float(m, h);
-    lo_message_add_float(m, s);
-    lo_message_add_float(m, l);
-    bundle_add(addr, m);
-    */
   }
 }
 
@@ -571,9 +536,7 @@ int main(int argc, char * argv[]) {
   //osc::setup("192.168.0.100", "9001"); //main patch
   osc::setup("", "1888"); //jason's mockup, with route through
 
-  osc::start_bundle();
   osc::send("/remote");
-  osc::send_bundle();
 
   sleep(1);
   
@@ -584,7 +547,6 @@ int main(int argc, char * argv[]) {
 
   sigaction(SIGINT, &sigIntHandler, NULL);
 
-  osc::start_bundle();
   osc::send("/nvca", 0.0f);
   osc::send("/tvca", 0.0f);
   osc::send("/bvca", 0.0f);
@@ -608,14 +570,12 @@ int main(int argc, char * argv[]) {
   snd::set_volumes(0.0);
 
   osc::send("/npan", tone_pan);
-  osc::send_bundle();
 
   clk::time_point last_formant = clk::now();
   clk::time_point next_led = clk::now();
 
   int formant_index_last = -1;
   while (!done) {
-    osc::start_bundle();
     midi::process();
 
     clk::time_point n = clk::now();
@@ -640,10 +600,8 @@ int main(int argc, char * argv[]) {
       next_led = n + led_period;
     }
     //snd::run();
-    osc::send_bundle();
   }
 
-  osc::start_bundle();
   osc::send("/nvca", 0.0f);
   osc::send("/tvca", 0.0f);
   osc::send("/bvca", 0.0f);
@@ -651,7 +609,6 @@ int main(int argc, char * argv[]) {
   for (int i = 0; i < leds.size(); i++) {
     osc::send_led(i, 0.0, 0.0, 0.0);
   }
-  osc::send_bundle();
 
   sleep(1);
 

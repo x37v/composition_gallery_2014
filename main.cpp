@@ -25,6 +25,21 @@ enum { TONE = 0, NOISE = 1, BASS = 2 };
 
 enum preformance_mode_t { FREE, NOTES };
 
+void pval(std::string name, float v) {
+  cout << name << " " << v << endl;
+}
+
+float wrap1(float v) {
+  while (v > 0.0f)
+    v -= 1.0f;
+  while (v < 0.0f)
+    v += 1.0f;
+  return v;
+}
+
+float clamp1(float v) {
+  return std::max(1.0f, std::min(0.0f, v));
+}
 
 //primes
 std::vector<float> tone_offset = {
@@ -53,7 +68,9 @@ class Led {
   public:
     float hue = 1.0f;
     float sat = 1.0f;
+    float val_mut = 0.0f;
     Envelope env = {Envelope::TRIANGLE};
+    float value() { return env.value() * val_mut; }
 };
 
 class VolumeEnvelope {
@@ -79,6 +96,7 @@ float formant_range = 0.0f;
 
 clk::duration formant_period = milliseconds_type(1000);
 clk::duration led_period = milliseconds_type(40);
+const float led_length_mult = (1.0f / 40.0f);
 clk::duration pan_period = milliseconds_type(80);
 
 std::default_random_engine generator(std::chrono::system_clock::now().time_since_epoch().count());
@@ -127,12 +145,61 @@ namespace osc {
 }
 
 float frand() { return real_rand(generator); }
+float frand2() { return 1.0f - 2.0f * real_rand(generator); }
+
+float rand_centered(float center, float rand_amt, float max_offset = 1.0f) {
+  return center + frand2() * max_offset * rand_amt;
+}
 
 bool was_note = false;
 
 namespace led {
-  int offset = 0;
+  clk::time_point next_draw = clk::now();
+
   float color = 0;
+
+  float _start = 0.0f;
+  float _start_rand = 0.0f;
+  float _offset = 0;
+  float _offset_rand = 0;
+
+  float _rate = 0.5f;
+  float _rate_rand = 0.1f;
+  float _length = 0.5f;
+  float _length_rand = 0.1f;
+
+  float _bright = 0.0f;
+  float _saturation = 1.0f;
+
+  void update_next() {
+    next_draw = clk::now() + milliseconds_type(static_cast<int>(100.0f + rand_centered(_rate * 2000, _rate_rand, _rate * 2000)));
+  }
+
+  void start(float v) {
+    _start = v;
+    cout << "led start: " << _start << endl;
+  }
+  void start_rand(float v) {
+    _start_rand = v;
+  }
+  void offset(float v) { _offset = v; }
+  void offset_rand(float v) { _offset_rand = v; }
+
+  void rate(float v) {
+    _rate = v;
+  }
+  void rate_rand(float v) { _rate_rand = v; }
+
+  void length(float v) {
+    _length = v > 0 ? v : 0.5f / 127.0f;
+  }
+
+  void length_rand(float v) {
+    _length_rand = v;
+  }
+
+  void bright(float v) { _bright = v; }
+  void saturation(float v) { _saturation = v; }
 
   int active() {
     int cnt = 0;
@@ -157,7 +224,37 @@ namespace led {
     return index;
   }
 
+  unsigned int draw_count = 0;
   void draw() {
+    clk::time_point now = clk::now();
+
+    if (now >= next_draw) {
+      update_next();
+      //random
+      if (draw_count % 2 == 0) {
+        color = wrap1(rand_centered(_start, _start_rand, 0.5));
+      } else {
+        color = wrap1(color + rand_centered(_offset, _offset_rand, 0.f));
+      }
+      int l = 0;
+      for (int i = 0; i < 6; i++) {
+        l = rand() % leds.size();
+        if (leds[l].env.complete())
+          break;
+      }
+      leds[l].hue = color;
+      leds[l].sat = _saturation;
+      leds[l].env.restart();
+      leds[l].env.mode(Envelope::HALF_SIN);
+      float inc = _length > 0.0f ? (led_length_mult / (4.0 * _length)) : 0.01f;
+      leds[l].env.increment(inc);
+      leds[l].val_mut = _bright;
+      //cout << "led[" << l << " : " << _bright << " : " << color << " inc: " << inc << endl;
+      //cout << draw_count << endl;
+
+      draw_count++;
+    }
+#if 0
 #if 0
     if (led::active() < 2) {
       int l = round(led_offset++);
@@ -188,9 +285,11 @@ namespace led {
       }
     }
 #endif
+#endif
+
     for (int i = 0; i < NUM_LEDS; i++) {
       if (leds[i].env.active())
-        osc::send_led(i, leds[i].hue, leds[i].sat, leds[i].env.value());
+        osc::send_led(i, leds[i].hue, leds[i].sat, leds[i].value());
       leds[i].env.update();
     }
     was_note = false;
@@ -350,6 +449,8 @@ int main(int argc, char * argv[]) {
     midi::process();
 
     clk::time_point n = clk::now();
+
+    /*
     if (last_formant + formant_period < n) {
       int index = static_cast<int>(round(formant_center + frand() * formant_range)) % vaddr.size();
       if (index != index_last)
@@ -362,12 +463,14 @@ int main(int argc, char * argv[]) {
       if (performance_mode == NOTES)
         snd::note(note_index, next_note);
     }
+    */
 
     if (next_led < n) {
       led::draw();
       next_led = n + led_period;
     }
 
+    /*
     if (next_pan < n) {
       next_pan = n + pan_period;
 
@@ -398,6 +501,7 @@ int main(int argc, char * argv[]) {
         osc::send("/npan", noise_pan * 360);
       }
     }
+    */
   }
 
   osc::send("/nvca", 0.0f);
@@ -441,20 +545,41 @@ namespace midi {
   }
 
   void cc(uint8_t chan, uint8_t num, uint8_t val) {
-    cout << "cc " << (int)num << ": " << (int)val << " chan: " << (int)chan << endl;
+    //cout << "cc " << (int)num << ": " << (int)val << " chan: " << (int)chan << endl;
     float f = static_cast<float>(val) / 127.0;
     switch (num) {
+      //first col
       case 8:
-        note_length_max = 10.0 * f * 600.0;
+        led::start(f);
         break;
       case 16:
-        note_spacing_max = 10.0 * f * 100.0;
+        led::start_rand(f);
         break;
       case 24:
+        led::offset(f);
         break;
       case 32:
+        led::offset_rand(f);
         break;
       case 40:
+        led::bright(f);
+        break;
+
+        //second col
+      case 9:
+        led::rate(f);
+        break;
+      case 17:
+        led::rate_rand(f);
+        break;
+      case 25:
+        led::length(f);
+        break;
+      case 33:
+        led::length_rand(f);
+        break;
+      case 41:
+        led::saturation(f);
         break;
 
 

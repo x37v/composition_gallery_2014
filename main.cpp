@@ -159,9 +159,10 @@ namespace led {
   enum led_mode_t {
     RANDOM,
     CIRCLE,
-    PULSE
+    PULSE,
+    STROBE_RANDOM
   };
-  led_mode_t mode = PULSE;
+  led_mode_t mode = STROBE_RANDOM;
 
   float color = 0;
 
@@ -249,6 +250,7 @@ namespace led {
       case CIRCLE:
       case RANDOM:
       case PULSE:
+      case STROBE_RANDOM:
         return (now >= next_draw);
     }
   }
@@ -273,6 +275,7 @@ namespace led {
         }
         break;
       case RANDOM:
+      case STROBE_RANDOM:
         for (int i = 0; i < 6; i++) {
           l = rand() % leds.size();
           if (leds[l].env.complete())
@@ -281,6 +284,16 @@ namespace led {
         break;
     }
     return l;
+  }
+
+  Envelope::mode_t env_mode() {
+    switch (mode) {
+      case PULSE:
+        return Envelope::RAMP_DOWN;
+      case STROBE_RANDOM:
+        return Envelope::SQUARE;
+    }
+    return Envelope::HALF_SIN;
   }
 
   void draw() {
@@ -296,7 +309,7 @@ namespace led {
       leds[l].hue = color;
       leds[l].sat = _saturation;
       leds[l].env.restart();
-      leds[l].env.mode(Envelope::HALF_SIN);
+      leds[l].env.mode(env_mode());
 
       float inc = _length > 0.0f ? (led_length_mult / (4.0 * _length)) : 0.01f;
       leds[l].env.increment(inc);

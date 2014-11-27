@@ -41,5 +41,9 @@ float Envelope::value() const {
       return mIndex;
     case RAMP_DOWN:
       return 1.0f - mIndex;
+    case PULSE:
+      return mIndex == 0.0f ? 1.0f : 0.0f;
+    case SQUARE:
+      return mIndex < 1.0f ? 1.0f : 0.0f;
   }
 }

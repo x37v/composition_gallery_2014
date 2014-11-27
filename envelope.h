@@ -3,7 +3,7 @@
 
 class Envelope {
   public:
-    enum mode_t { RAMP_UP, RAMP_DOWN, TRIANGLE, HALF_SIN, QUARTER_SIN };
+    enum mode_t { RAMP_UP, RAMP_DOWN, TRIANGLE, HALF_SIN, QUARTER_SIN, PULSE, SQUARE };
 
     Envelope(mode_t m = RAMP_UP, float inc = 0.01f);
 

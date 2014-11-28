@@ -582,6 +582,10 @@ namespace midi {
 
 //white = saturation 0, value = 1, hue = 1
 
+
+//0 main freq, all negative oscs up 100%, nice clicking
+//51 main freq and 90 bass is good
+
 int main(int argc, char * argv[]) {
   midi::open();
   //osc::setup("192.168.0.100", "9001"); //main patch

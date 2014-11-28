@@ -177,9 +177,10 @@ namespace led {
     CIRCLE,
     PULSE,
     STROBE_RANDOM,
+    LINES,
     TOTAL
   };
-  led_mode_t mode = RANDOM;
+  led_mode_t mode = LINES;
 
   float color = 0;
 
@@ -193,13 +194,15 @@ namespace led {
   float _length = 0.5f;
   float _length_rand = 0.1f;
 
+  float _line_start = 0.1f;
   int _period_length = 2;
+
 
   float _bright = 0.0f;
   float _saturation = 1.0f;
 
   void update_next() {
-    if (mode == TOTAL) {
+    if (mode == TOTAL || mode == LINES) {
       next_led_change = clk::now() + milliseconds_type(static_cast<int>(100.0f + rand_centered(_rate * 8000, _rate_rand, _rate * 2000)));
     } else {
       next_led_change = clk::now() + milliseconds_type(static_cast<int>(100.0f + rand_centered(_rate * 2000, _rate_rand, _rate * 2000)));
@@ -228,8 +231,9 @@ namespace led {
     _length_rand = v;
   }
 
-  void period_length(int v) {
-    _period_length = 2 + v;
+  void period_length(float v) {
+    _period_length = 2 + 127.0f * v;
+    _line_start = v;
   }
 
   void bright(float v) { _bright = v; }
@@ -265,14 +269,16 @@ namespace led {
   unsigned int draw_count = 0;
 
   bool ready_to_draw() {
+    if (_bright < 0.01f)
+      return false;
     clk::time_point now = clk::now();
-    switch (mode) {
-      case TOTAL:
-        break;
-      default:
-        break;
+    if (mode == LINES) {
+      if (leds.front().env.active() && 
+          leds.front().env.value() > _line_start && leds.back().env.complete()) {
+        return true;
+      }
     }
-    return (now >= next_led_change) && _bright > 0.0f;
+    return (now >= next_led_change);
   }
 
   int row_count = 0;
@@ -283,6 +289,9 @@ namespace led {
     switch (mode) {
       case TOTAL:
         l = 0;
+        break;
+      case LINES:
+        l = (draw_count % 2);
         break;
       case CIRCLE:
         l = round(draw_count);
@@ -337,6 +346,20 @@ namespace led {
       Envelope::mode_t emode = env_mode();
       if (mode == TOTAL) {
         for (int i = 0; i < leds.size(); i++) {
+          leds[i].hue = color;
+          leds[i].sat = _saturation;
+          leds[i].env.restart();
+          leds[i].env.mode(emode);
+          leds[i].env.increment(inc);
+          leds[i].val_mut = _bright;
+        }
+      } else if (mode == LINES) {
+        int s = 0, e = 3;
+        if (draw_count % 2 == 1) {
+          s = 3;
+          e = 6;
+        }
+        for (int i = s; i < e; i++) {
           leds[i].hue = color;
           leds[i].sat = _saturation;
           leds[i].env.restart();
@@ -672,14 +695,12 @@ namespace midi {
         led::rate(f);
         break;
       case 17:
-        led::rate_rand(f);
-        break;
-      case 25:
         led::length(f);
         break;
+      case 25:
+        break;
       case 33:
-        //led::length_rand(f);
-        led::period_length(val);
+        led::period_length(f);
         break;
       case 41:
         led::saturation(f);

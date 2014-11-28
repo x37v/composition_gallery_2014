@@ -1,12 +1,11 @@
 #include <iostream>
-#include <lo/lo.h>
+#include <oscpack/osc/OscOutboundPacketStream.h>
+#include <oscpack/ip/UdpSocket.h>
 #include <vector>
 #include <array>
-#include <mutex>
 #include <chrono>
 #include <random>
 #include <unistd.h>
-#include "osc_server.h"
 #include "envelope.h"
 #include "RtMidi.h"
 #include <memory>
@@ -134,32 +133,37 @@ float note_spacing_max = 400.0f;
 const float pan_mult = 0.05f;
 
 namespace osc {
-  std::mutex osc_mutex; 
-  lo_address osc_address = nullptr;
+#define OUTPUT_BUFFER_SIZE 16384
+  char buffer[OUTPUT_BUFFER_SIZE];
+  osc::OutboundPacketStream stream(buffer, OUTPUT_BUFFER_SIZE);
+  std::shared_ptr<UdpTransmitSocket> transmitSocket;
   
-  void setup(std::string host, std::string port) {
-    std::lock_guard<std::mutex> lock(osc_mutex);
-    if (osc_address)
-      lo_address_free(osc_address);
-    osc_address = lo_address_new(host.size() ? host.c_str() : NULL, port.c_str());
+  void setup(std::string host, int port) {
+    transmitSocket = std::make_shared<UdpTransmitSocket>(IpEndpointName(host.c_str(), port));
   }
 
+  void bundle_begin() {
+    stream.Clear();
+    stream << osc::BeginBundleImmediate;
+  }
+
+  void bundle_send() {
+    stream << osc::EndBundle;
+    transmitSocket->Send(stream.Data(), stream.Size());
+  }
 
   void send(const std::string addr) {
-    std::lock_guard<std::mutex> lock(osc_mutex);
-    lo_send(osc_address, addr.c_str(), "");
+    stream << osc::BeginMessage(addr.c_str()) << osc::EndMessage;
   }
 
   void send(const std::string addr, float v) {
-    std::lock_guard<std::mutex> lock(osc_mutex);
-    lo_send(osc_address, addr.c_str(), "f", v);
+    stream << osc::BeginMessage(addr.c_str()) << v << osc::EndMessage;
   }
 
   void send_led(int index, float h, float s, float l) {
-    std::lock_guard<std::mutex> lock(osc_mutex);
     //l = std::min(1.0f, std::max(0.0f, static_cast<float>(std::sin(l * M_PI / 2.0))));
     std::string addr = "/led" + std::to_string(index + 1);
-    lo_send(osc_address, addr.c_str(), "fff", h, s, l);
+    stream << osc::BeginMessage(addr.c_str()) << h << s << l << osc::EndMessage;
   }
 }
 
@@ -588,10 +592,13 @@ namespace midi {
 
 int main(int argc, char * argv[]) {
   midi::open();
-  //osc::setup("192.168.0.100", "9001"); //main patch
-  osc::setup("", "1888"); //jason's mockup, with route through
 
+  //osc::setup("192.168.0.100", 9001); //main patch
+  osc::setup("", 1888); //jason's mockup, with route through
+
+  osc::bundle_begin();
   osc::send("/remote");
+  osc::bundle_send();
 
   sleep(1);
   
@@ -602,6 +609,7 @@ int main(int argc, char * argv[]) {
 
   sigaction(SIGINT, &sigIntHandler, NULL);
 
+  osc::bundle_begin();
   osc::send("/nvca", 0.0f);
   osc::send("/tvca", 0.0f);
   osc::send("/bvca", 0.0f);
@@ -615,7 +623,9 @@ int main(int argc, char * argv[]) {
 
   osc::send("/t1", 65);
   osc::send("/bfreq", 92);
+  osc::bundle_send();
 
+  osc::bundle_begin();
   for (int i = 0; i < NUM_LEDS; i++) {
     leds[i].env.set_complete();
     osc::send_led(i, 0.0, 0.0, 0.0);
@@ -633,7 +643,9 @@ int main(int argc, char * argv[]) {
   clk::time_point performance_report_next = clk::now();
 
   int formant_index_last = -1;
+  osc::bundle_send();
   while (!done) {
+    osc::bundle_begin();
     midi::process();
 
     clk::time_point n = clk::now();
@@ -669,8 +681,10 @@ int main(int argc, char * argv[]) {
       fflush(stdout);
       performance_report_next += report_period;
     }
+    osc::bundle_send();
   }
 
+  osc::bundle_begin();
   osc::send("/nvca", 0.0f);
   osc::send("/tvca", 0.0f);
   osc::send("/bvca", 0.0f);
@@ -678,6 +692,7 @@ int main(int argc, char * argv[]) {
   for (int i = 0; i < leds.size(); i++) {
     osc::send_led(i, 0.0, 0.0, 0.0);
   }
+  osc::bundle_send();
 
   sleep(1);
 

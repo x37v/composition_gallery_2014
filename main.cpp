@@ -270,6 +270,7 @@ namespace led {
   }
 
   void mode_change(bool forward) {
+    update_next();
     draw_count = row_count = row_index = 0;
     if (forward && mode + 1 == INVALID) {
       mode = static_cast<led_mode_t>(0);

@@ -137,30 +137,37 @@ namespace osc {
   char buffer[OUTPUT_BUFFER_SIZE];
   osc::OutboundPacketStream stream(buffer, OUTPUT_BUFFER_SIZE);
   std::shared_ptr<UdpTransmitSocket> transmitSocket;
+  bool has_message = false;
   
   void setup(std::string host, int port) {
     transmitSocket = std::make_shared<UdpTransmitSocket>(IpEndpointName(host.c_str(), port));
   }
 
   void bundle_begin() {
-    stream.Clear();
+    has_message = false;
     stream << osc::BeginBundleImmediate;
   }
 
   void bundle_send() {
-    stream << osc::EndBundle;
-    transmitSocket->Send(stream.Data(), stream.Size());
+    if (has_message) {
+      stream << osc::EndBundle;
+      transmitSocket->Send(stream.Data(), stream.Size());
+    }
+    stream.Clear();
   }
 
   void send(const std::string addr) {
+    has_message = true;
     stream << osc::BeginMessage(addr.c_str()) << osc::EndMessage;
   }
 
   void send(const std::string addr, float v) {
+    has_message = true;
     stream << osc::BeginMessage(addr.c_str()) << v << osc::EndMessage;
   }
 
   void send_led(int index, float h, float s, float l) {
+    has_message = true;
     //l = std::min(1.0f, std::max(0.0f, static_cast<float>(std::sin(l * M_PI / 2.0))));
     std::string addr = "/led" + std::to_string(index + 1);
     stream << osc::BeginMessage(addr.c_str()) << h << s << l << osc::EndMessage;

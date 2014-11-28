@@ -2,10 +2,17 @@ CXX = clang++
 
 CXXFLAGS = -std=c++11 -g -Wall
 
-CXXFLAGS += -I.
-LDFLAGS += -lrtmidi liboscpack.a
+CXXFLAGS += -I. -Ioscpack/
+LDFLAGS += -lrtmidi
 
-SRC = envelope.cpp main.cpp
+SRC = envelope.cpp main.cpp \
+			oscpack/ip/posix/NetworkingUtils.cpp \
+			oscpack/ip/posix/UdpSocket.cpp \
+			oscpack/ip/IpEndpointName.cpp \
+			oscpack/osc/OscOutboundPacketStream.cpp \
+			oscpack/osc/OscReceivedElements.cpp \
+			oscpack/osc/OscTypes.cpp \
+			oscpack/osc/OscPrintReceivedElements.cpp
 OBJ = ${SRC:.cpp=.o}
 
 .cpp.o:

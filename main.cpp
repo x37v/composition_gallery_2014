@@ -178,9 +178,10 @@ namespace led {
     PULSE,
     STROBE_RANDOM,
     LINES,
+    LINES_2,
     TOTAL
   };
-  led_mode_t mode = LINES;
+  led_mode_t mode = LINES_2;
 
   float color = 0;
 
@@ -202,7 +203,7 @@ namespace led {
   float _saturation = 1.0f;
 
   void update_next() {
-    if (mode == TOTAL || mode == LINES) {
+    if (mode == TOTAL || mode == LINES || mode == LINES_2) {
       next_led_change = clk::now() + milliseconds_type(static_cast<int>(100.0f + rand_centered(_rate * 8000, _rate_rand, _rate * 2000)));
     } else {
       next_led_change = clk::now() + milliseconds_type(static_cast<int>(100.0f + rand_centered(_rate * 2000, _rate_rand, _rate * 2000)));
@@ -268,19 +269,6 @@ namespace led {
 
   unsigned int draw_count = 0;
 
-  bool ready_to_draw() {
-    if (_bright < 0.01f)
-      return false;
-    clk::time_point now = clk::now();
-    if (mode == LINES) {
-      if (leds.front().env.active() && 
-          leds.front().env.value() > _line_start && leds.back().env.complete()) {
-        return true;
-      }
-    }
-    return (now >= next_led_change);
-  }
-
   int row_count = 0;
   int row_index = 0;
 
@@ -292,6 +280,9 @@ namespace led {
         break;
       case LINES:
         l = (draw_count % 2);
+        break;
+      case LINES_2:
+        l = (draw_count % 5);
         break;
       case CIRCLE:
         l = round(draw_count);
@@ -318,6 +309,28 @@ namespace led {
     return l;
   }
 
+  bool ready_to_draw() {
+    if (_bright < 0.01f)
+      return false;
+    int l = led_index();
+    clk::time_point now = clk::now();
+    if (mode == LINES || (mode == LINES_2 && l < 2)) {
+      if (leds.front().env.active() && 
+          leds.front().env.value() > _line_start && leds.back().env.complete()) {
+        return true;
+      }
+    } else if (mode == LINES_2) {
+      if (l == 2 && !active()) {
+        return true;
+      } else if (l == 3 && leds[0].env.active() && leds[0].env.value() > _line_start) {
+        return true;
+      } else if (l == 4 && leds[1].env.active() && leds[1].env.value() > _line_start) {
+        return true;
+      }
+    }
+    return (now >= next_led_change);
+  }
+
   Envelope::mode_t env_mode() {
     switch (mode) {
       case PULSE:
@@ -330,50 +343,62 @@ namespace led {
     return Envelope::HALF_SIN;
   }
 
+  float color0 = 0.0f;
+  float color1 = 0.0f;
+
   void draw() {
     if (ready_to_draw()) {
       update_next();
       //random
-      if (draw_count % 2 == 0) {
-        color = wrap1(rand_centered(_start, _start_rand, 0.5));
-      } else {
-        color = wrap1(color + rand_centered(_offset, _offset_rand, 0.5f));
+      int l = led_index();
+      if ((mode == LINES_2 && l < 2) || (mode != LINES_2 && draw_count % 2 == 0)) {
+        color = color0 = wrap1(rand_centered(_start, _start_rand, 0.5));
+      } else if (mode != LINES_2 || l >= 2) {
+        color = color1 = wrap1(color0 + rand_centered(_offset, _offset_rand, 0.5f));
       }
 
-      int l = led_index();
       float inc = _length > 0.0f ? (led_length_mult / (4.0 * _length)) : 0.01f;
 
       Envelope::mode_t emode = env_mode();
+      auto set_led = [&](Led& led) {
+        led.hue = color;
+        led.sat = _saturation;
+        led.env.restart();
+        led.env.mode(emode);
+        led.env.increment(inc);
+        led.val_mut = _bright;
+      };
       if (mode == TOTAL) {
         for (int i = 0; i < leds.size(); i++) {
-          leds[i].hue = color;
-          leds[i].sat = _saturation;
-          leds[i].env.restart();
-          leds[i].env.mode(emode);
-          leds[i].env.increment(inc);
-          leds[i].val_mut = _bright;
+          set_led(leds.at(i));
         }
-      } else if (mode == LINES) {
+      } else if (mode == LINES || (mode == LINES_2 && l < 2)) {
         int s = 0, e = 3;
-        if (draw_count % 2 == 1) {
+        if (l == 1) {
           s = 3;
           e = 6;
         }
         for (int i = s; i < e; i++) {
-          leds[i].hue = color;
-          leds[i].sat = _saturation;
-          leds[i].env.restart();
-          leds[i].env.mode(emode);
-          leds[i].env.increment(inc);
-          leds[i].val_mut = _bright;
+          set_led(leds.at(i));
         }
+      } else if (mode == LINES_2) {
+        int s = 0, e = 3;
+        switch(l) {
+          case 3:
+            s = 1;
+            e = 4;
+            break;
+          case 4:
+            s = 2;
+            e = 5;
+            break;
+          default:
+            break;
+        }
+        set_led(leds.at(s));
+        set_led(leds.at(e));
       } else {
-        leds[l].hue = color;
-        leds[l].sat = _saturation;
-        leds[l].env.restart();
-        leds[l].env.mode(emode);
-        leds[l].env.increment(inc);
-        leds[l].val_mut = _bright;
+        set_led(leds.at(l));
       }
 
       draw_count++;

@@ -274,6 +274,15 @@ namespace led {
     }
   }
 
+  void print_mode() {
+    cout << endl << "led mode: " << mode_string(mode);
+    if (mode + 1 == INVALID)
+      cout << "\tLAST" << endl;
+    else
+      cout << endl << "\tnext: " << mode_string(static_cast<led_mode_t>(mode + 1)) << endl;
+    cout << endl;
+  }
+
   void mode_change(bool forward) {
     update_next();
     draw_count = row_count = row_index = 0;
@@ -287,10 +296,7 @@ namespace led {
       else
         mode--;
     }
-    cout << endl << "led mode: " << mode_string(mode);
-    if (mode + 1 == INVALID)
-      cout << "\tLAST" << endl;
-    cout << endl;
+    print_mode();
   }
 
   void bright(float v) { _bright = v; }
@@ -712,6 +718,7 @@ int main(int argc, char * argv[]) {
 
   int formant_index_last = -1;
   osc::bundle_send();
+  led::print_mode();
   while (!done) {
     osc::bundle_begin();
     midi::process();

@@ -189,8 +189,8 @@ namespace led {
   enum led_mode_t {
     STROBE_RANDOM = -1,
     RANDOM = 0,
-    CIRCLE,
     PULSE,
+    CIRCLE,
     LINES,
     LINES_2,
     TOTAL,
@@ -270,7 +270,7 @@ namespace led {
   }
 
   void mode_change(bool forward) {
-    row_count = row_index = 0;
+    draw_count = row_count = row_index = 0;
     if (forward && mode + 1 == INVALID) {
       mode = static_cast<led_mode_t>(0);
     } else if (!forward && mode == 0) {

@@ -217,6 +217,7 @@ namespace led {
 
   float _bright = 0.0f;
   float _saturation = 1.0f;
+  float _saturation_stored = 1.0f;
 
   unsigned int draw_count = 0;
   int row_count = 0;
@@ -252,9 +253,12 @@ namespace led {
     _length_rand = v;
   }
 
+  void line_start(float v) {
+    _line_start = v;
+  }
+
   void period_length(float v) {
     _period_length = 2 + 127.0f * v;
-    _line_start = v;
   }
 
   std::string mode_string(led_mode_t m) {
@@ -823,6 +827,7 @@ namespace midi {
         led::length(f);
         break;
       case 25:
+        led::line_start(f);
         break;
       case 33:
         led::period_length(f);
@@ -905,6 +910,14 @@ namespace midi {
       case 59:
         if (val != 0)
           led::mode_change(true);
+        break;
+      case 65:
+        if (val != 0) {
+          led::_saturation_stored = led::_saturation;
+          led::_saturation = 0.0f;
+        } else {
+          led::_saturation = led::_saturation_stored;
+        }
         break;
     }
   }

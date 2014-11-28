@@ -104,6 +104,7 @@ preformance_mode_t performance_mode = FREE;
 
 typedef std::chrono::steady_clock clk;
 typedef std::chrono::duration<int,std::milli> milliseconds_type;
+typedef std::chrono::seconds seconds_type;
 typedef std::uniform_real_distribution<double> uni_real_distro;
 
 float formant_center = 0.0f;
@@ -113,6 +114,8 @@ clk::duration formant_period = milliseconds_type(1000);
 clk::duration led_period = milliseconds_type(40);
 const float led_length_mult = (1.0f / 40.0f);
 clk::duration pan_period = milliseconds_type(80);
+
+clk::duration report_period = seconds_type(10);
 
 std::default_random_engine generator(std::chrono::system_clock::now().time_since_epoch().count());
 uni_real_distro real_rand = uni_real_distro(0, 1.0);
@@ -622,6 +625,9 @@ int main(int argc, char * argv[]) {
   clk::time_point last_formant = clk::now();
   clk::time_point next_led = clk::now();
 
+  clk::time_point performance_start = clk::now();
+  clk::time_point performance_report_next = clk::now();
+
   int formant_index_last = -1;
   while (!done) {
     midi::process();
@@ -648,6 +654,17 @@ int main(int argc, char * argv[]) {
       next_led = n + led_period;
     }
     //snd::run();
+    if (performance_report_next < n) {
+      seconds_type secs = std::chrono::duration_cast<seconds_type>(n - performance_start);
+      int s = secs.count();
+      int m = s / 60;
+      s = s % 60;
+      if (s == 0)
+        cout << endl;
+      printf("%02d:%02d\t", m, s);
+      fflush(stdout);
+      performance_report_next += report_period;
+    }
   }
 
   osc::send("/nvca", 0.0f);

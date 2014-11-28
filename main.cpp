@@ -106,6 +106,7 @@ typedef std::chrono::duration<int,std::milli> milliseconds_type;
 typedef std::chrono::seconds seconds_type;
 typedef std::uniform_real_distribution<double> uni_real_distro;
 
+float total_tune = 0.0f;
 float formant_center = 0.0f;
 float formant_range = 0.0f;
 
@@ -541,6 +542,11 @@ namespace snd {
   }
 
   void set_freqs() {
+    //osc::send("/t1", 65);
+    //osc::send("/bfreq", 92);
+
+    osc::send("/t1", 51.0f + total_tune * (65.0f - 51.0f));
+    osc::send("/bfreq", 90.01f + total_tune * (10.0001f - 90.0f));
     for (int i = 1; i < 6; i++) {
       float v = 0.05 * frand() + tone_offset[i] * tone_freq_spread;
       osc::send("/t" + std::to_string(i + 1), v);
@@ -670,8 +676,17 @@ int main(int argc, char * argv[]) {
 
   osc::send("/formanttime", 10.0);
 
-  osc::send("/t1", 65);
-  osc::send("/bfreq", 92);
+#if 0
+  osc::send("/t1", 0);
+  osc::send("/bfreq", 90);
+  osc::send("/t3", 127);
+  osc::send("/t4", 127);
+  osc::send("/t6", 127);
+
+  osc::send("/vca" + std::to_string(snd::map_vca(3)), 1.0);
+  osc::send("/vca" + std::to_string(snd::map_vca(4)), 1.0);
+  osc::send("/vca" + std::to_string(snd::map_vca(6)), 1.0);
+#endif
   osc::bundle_send();
 
   osc::bundle_begin();
@@ -818,6 +833,8 @@ namespace midi {
 
 
       case 13:
+        total_tune = f;
+        snd::set_freqs();
         break;
       case 21:
         break;

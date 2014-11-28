@@ -187,15 +187,16 @@ namespace led {
   clk::time_point next_led_change = clk::now();
 
   enum led_mode_t {
-    RANDOM,
+    STROBE_RANDOM = -1,
+    RANDOM = 0,
     CIRCLE,
     PULSE,
-    STROBE_RANDOM,
     LINES,
     LINES_2,
-    TOTAL
+    TOTAL,
+    INVALID
   };
-  led_mode_t mode = LINES_2;
+  led_mode_t mode = RANDOM;
 
   float color = 0;
 
@@ -215,6 +216,10 @@ namespace led {
 
   float _bright = 0.0f;
   float _saturation = 1.0f;
+
+  unsigned int draw_count = 0;
+  int row_count = 0;
+  int row_index = 0;
 
   void update_next() {
     if (mode == TOTAL || mode == LINES || mode == LINES_2) {
@@ -251,6 +256,37 @@ namespace led {
     _line_start = v;
   }
 
+  std::string mode_string(led_mode_t m) {
+    switch (m) {
+      case RANDOM: return "random";
+      case STROBE_RANDOM: return "strobe random";
+      case CIRCLE: return "circle";
+      case PULSE: return "pulse";
+      case LINES: return "lines";
+      case LINES_2: return "lines 2";
+      case TOTAL: return "total";
+      case INVALID: return "invalid";
+    }
+  }
+
+  void mode_change(bool forward) {
+    row_count = row_index = 0;
+    if (forward && mode + 1 == INVALID) {
+      mode = static_cast<led_mode_t>(0);
+    } else if (!forward && mode == 0) {
+      mode = static_cast<led_mode_t>(INVALID - 1);
+    } else {
+      if (forward)
+        mode++;
+      else
+        mode--;
+    }
+    cout << endl << "led mode: " << mode_string(mode);
+    if (mode + 1 == INVALID)
+      cout << "\tLAST" << endl;
+    cout << endl;
+  }
+
   void bright(float v) { _bright = v; }
   void saturation(float v) { _saturation = v; }
 
@@ -265,7 +301,7 @@ namespace led {
 
   int round(int index) {
     //turn around sometimes
-    if ((index % _period_length) > (_period_length >> 1)) {
+    if (row_index % 2 == 1) {
       index = 5 - index;
     }
     index = index % leds.size();
@@ -281,12 +317,7 @@ namespace led {
     return index;
   }
 
-  unsigned int draw_count = 0;
-
-  int row_count = 0;
-  int row_index = 0;
-
-  int led_index() {
+  int led_index(bool update) {
     int l = 0;
     switch (mode) {
       case TOTAL:
@@ -300,19 +331,29 @@ namespace led {
         break;
       case CIRCLE:
         l = round(draw_count);
+        if (update) {
+          row_count++;
+          if ((row_count / 6) >= _period_length) {
+            row_count = 0;
+            row_index++;
+          }
+        }
         break;
       case PULSE:
         {
-          if (row_count >= _period_length) {
-            row_count = 0;
-            row_index = (row_index + 1) % 3;
-          } 
+          if (update) {
+            if (row_count >= _period_length) {
+              row_count = 0;
+              row_index = (row_index + 1) % 3;
+            } 
+            row_count++;
+          }
           l = (draw_count % 2 == (row_index % 2)) ? row_index : (row_index + 3);
-          row_count++;
         }
         break;
       case RANDOM:
       case STROBE_RANDOM:
+      case INVALID:
         for (int i = 0; i < 6; i++) {
           l = rand() % leds.size();
           if (leds[l].env.complete())
@@ -326,7 +367,7 @@ namespace led {
   bool ready_to_draw() {
     if (_bright < 0.01f)
       return false;
-    int l = led_index();
+    int l = led_index(false);
     clk::time_point now = clk::now();
     if (mode == LINES || (mode == LINES_2 && l < 2)) {
       if (leds.front().env.active() && 
@@ -364,7 +405,7 @@ namespace led {
     if (ready_to_draw()) {
       update_next();
       //random
-      int l = led_index();
+      int l = led_index(true);
       if ((mode == LINES_2 && l < 2) || (mode != LINES_2 && draw_count % 2 == 0)) {
         color = color0 = wrap1(rand_centered(_start, _start_rand, 0.5));
       } else if (mode != LINES_2 || l >= 2) {
@@ -836,6 +877,16 @@ namespace midi {
         //xfade
       case 48:
         formant_period = milliseconds_type(1 + static_cast<int>(f * 500.0));
+        break;
+
+        //buttons
+      case 58:
+        if (val != 0)
+          led::mode_change(false);
+        break;
+      case 59:
+        if (val != 0)
+          led::mode_change(true);
         break;
     }
   }

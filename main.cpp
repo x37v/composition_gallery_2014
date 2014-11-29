@@ -593,23 +593,23 @@ namespace snd {
   unsigned int note_index = 0;
   void run() {
     clk::time_point n = clk::now();
-    if (next_note <= n) {
-      if (note_index % 2 == 0) {
-        int i = static_cast<int>(round((formant_center + frand() * formant_range) * perc_start.size())) % perc_start.size();
-        osc::send("/formanttime", 0.0);
-        osc::send(perc_start[i]);
-        osc::send("/tvca", sounds[TONE].vol);
-        osc::send("/nvca", sounds[NOISE].vol);
-        next_note = clk::now() + milliseconds_type(30);
-      } else {
-        int i = static_cast<int>(round((formant_center + frand() * formant_range) * perc_end.size())) % perc_end.size();
-        osc::send(perc_end[i]);
-        osc::send("/tvca", 0.0f);
-        osc::send("/nvca", 0.0f);
-        next_note = clk::now() + milliseconds_type(1000 + rand() % 1000);
-      }
-      note_index++;
-    }
+    //if (next_note <= n) {
+      //if (note_index % 2 == 0) {
+        //int i = static_cast<int>(round((formant_center + frand() * formant_range) * perc_start.size())) % perc_start.size();
+        //osc::send("/formanttime", 0.0);
+        //osc::send(perc_start[i]);
+        //osc::send("/tvca", sounds[TONE].vol);
+        //osc::send("/nvca", sounds[NOISE].vol);
+        //next_note = clk::now() + milliseconds_type(30);
+      //} else {
+        //int i = static_cast<int>(round((formant_center + frand() * formant_range) * perc_end.size())) % perc_end.size();
+        //osc::send(perc_end[i]);
+        //osc::send("/tvca", 0.0f);
+        //osc::send("/nvca", 0.0f);
+        //next_note = clk::now() + milliseconds_type(1000 + rand() % 1000);
+      //}
+      //note_index++;
+    //}
 
     if (next_pan <= n) {
       next_pan = n + pan_period;
@@ -658,8 +658,8 @@ namespace midi {
 int main(int argc, char * argv[]) {
   midi::open();
 
-  //osc::setup("192.168.0.100", 9001); //main patch
-  osc::setup("", 1888); //jason's mockup, with route through
+  osc::setup("192.168.0.100", 9001); //main patch
+  //osc::setup("", 1888); //jason's mockup, with route through
 
   osc::bundle_begin();
   osc::send("/remote");
@@ -744,7 +744,7 @@ int main(int argc, char * argv[]) {
       led::draw();
       next_led = n + led_period;
     }
-    //snd::run();
+    snd::run();
     if (performance_report_next < n) {
       seconds_type secs = std::chrono::duration_cast<seconds_type>(n - performance_start);
       int s = secs.count();
